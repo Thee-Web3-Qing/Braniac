@@ -1,22 +1,22 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Brainiac API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: brain
+    description: Content Brain AI drafting
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +24,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /brain/generate:
+    post:
+      operationId: generateDraft
+      tags: [brain]
+      summary: Generate an AI content draft using Qwen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DraftInput"
+      responses:
+        "200":
+          description: Generated draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DraftResult"
+        "500":
+          description: AI generation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +60,40 @@ components:
       required:
         - status
 
+    DraftInput:
+      type: object
+      required:
+        - type
+        - topic
+      properties:
+        type:
+          type: string
+          enum: [thread, recap, update, brief]
+          description: The type of content to generate
+        topic:
+          type: string
+          description: What the draft should be about
+        feedContext:
+          type: ["string", "null"]
+          description: Optional feed context to include
+
+    DraftResult:
+      type: object
+      required:
+        - content
+        - type
+      properties:
+        content:
+          type: string
+          description: The generated draft content
+        type:
+          type: string
+          description: The type of content generated
+
+    ApiError:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
