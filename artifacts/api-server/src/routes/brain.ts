@@ -87,4 +87,81 @@ Write the full piece now.`;
   }
 });
 
+router.post("/briefing", async (req, res) => {
+  const { query, timeRange, wallets, communities } = req.body as {
+    query?: string;
+    timeRange?: string;
+    wallets?: Array<{ label: string; address: string; chain: string }>;
+    communities?: Array<{ name: string; source: string }>;
+  };
+
+  const apiKey = process.env.QWEN_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "AI service not configured" });
+
+  const timeLabel =
+    timeRange === "24h" ? "last 24 hours"
+    : timeRange === "30d" ? "last 30 days"
+    : "last 7 days";
+
+  const walletContext = wallets?.length
+    ? wallets.map((w) => `- ${w.label} (${w.chain}): ${w.address}`).join("\n")
+    : "No wallets connected yet.";
+
+  const communityContext = communities?.length
+    ? communities.map((c) => `- ${c.name} on ${c.source}`).join("\n")
+    : "No communities connected yet.";
+
+  const feedSignals = `
+- New DEX launching on Base tomorrow - $200K liquidity incentives, early LPs get 3x boost
+- Whale wallet 0x7f3a moved 500 ETH to Binance (possible sell pressure signal)
+- LayerZero airdrop snapshot confirmed - requires 5+ cross-chain txs, deadline end of June
+- Pudgy Penguins floor up 12%, 340 ETH traded on Blur in 60 mins
+- Proposal #14 passed in Base Builders DAO with 78% approval - 50K USDC for Q3 grants
+- Arbitrum yield: 18% APY on stablecoin pairs via Camelot V4, audited, launching Thursday
+- New mint: ApeXplorer dropping in 6h, free + 0.01 ETH gas, 5000 supply
+`.trim();
+
+  const systemPrompt = `You are Brainiac, the user's personal Web3 intelligence assistant. Write concise, personalized briefings like a knowledgeable friend catching them up. Reference their specific wallets by name. Be direct, no fluff. Format with bold headers (**Portfolio**, **Community Highlights**, **Action Items**) and bullet points under each.`;
+
+  const userMessage = `Catch me up on the ${timeLabel}.
+
+My wallets:
+${walletContext}
+
+My communities:
+${communityContext}
+
+My question: "${query?.trim() || "What did I miss?"}"
+
+Recent signals from my communities:
+${feedSignals}
+
+Write a personalized briefing. Mention my wallet names where relevant. Flag anything time-sensitive.`;
+
+  try {
+    const response = await fetch(`${QWEN_BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "qwen-plus",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage },
+        ],
+        max_tokens: 800,
+        temperature: 0.6,
+      }),
+    });
+
+    if (!response.ok) return res.status(500).json({ error: "AI service error" });
+
+    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const brief = data.choices?.[0]?.message?.content || "Could not generate briefing.";
+
+    return res.json({ brief });
+  } catch {
+    return res.status(500).json({ error: "Failed to connect to AI service" });
+  }
+});
+
 export default router;

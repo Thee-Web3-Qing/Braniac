@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Link } from "wouter";
-import { Zap, Wallet, MessageSquare, TrendingUp, ArrowRight, Plus, Bell, TrendingDown } from "lucide-react";
+import { Zap, Wallet, MessageSquare, TrendingUp, ArrowRight, Plus, Bell, TrendingDown, Sparkles, RefreshCw, ChevronDown } from "lucide-react";
 
 const feedItems = [
   { id: 1, source: "Discord", server: "Bankless DAO", msg: "Alpha drop: New DEX launching on Base tomorrow with $200K liquidity incentives. Early LPs get 3x boost.", time: "2m ago", hot: true },
@@ -13,6 +13,158 @@ const wallets = [
   { address: "0x7f3a...9e2b", label: "Main Wallet", chain: "Ethereum", projects: 14, pnl: "+$2,340", positive: true },
   { address: "0xc91d...4f7a", label: "Trading Wallet", chain: "Base", projects: 7, pnl: "-$180", positive: false },
 ];
+
+const communities = [
+  { name: "Bankless DAO", source: "Discord" },
+  { name: "Crypto Signals", source: "Telegram" },
+  { name: "Base Builders", source: "Discord" },
+  { name: "NFT Alpha", source: "Telegram" },
+];
+
+const QUICK_PROMPTS = [
+  "What did I miss this week?",
+  "Any important announcements?",
+  "How are my tokens performing?",
+  "Anything time-sensitive I should act on?",
+];
+
+const TIME_RANGES = [
+  { key: "24h", label: "24 hours" },
+  { key: "7d",  label: "7 days" },
+  { key: "30d", label: "30 days" },
+];
+
+function BriefingCard() {
+  const [timeRange, setTimeRange] = useState("7d");
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [brief, setBrief] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const ask = async (overrideQuery?: string) => {
+    const q = overrideQuery ?? query;
+    setBrief(null);
+    setError(null);
+    setLoading(true);
+    setCollapsed(false);
+    try {
+      const res = await fetch("/api/brain/briefing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: q, timeRange, wallets, communities }),
+      });
+      const data = await res.json() as { brief?: string; error?: string };
+      if (!res.ok || data.error) throw new Error(data.error);
+      setBrief(data.brief ?? null);
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="bg-card border border-border rounded-2xl overflow-hidden mb-6 md:mb-8">
+      {/* Header row */}
+      <button
+        onClick={() => setCollapsed(!collapsed)}
+        className="w-full flex items-center justify-between px-4 md:px-5 py-3.5 hover:bg-white/[0.02] transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <Sparkles size={14} className="text-primary" />
+          <span className="font-display font-semibold text-foreground text-sm">Ask Brainiac</span>
+          <span className="text-muted-foreground/50 text-xs hidden sm:inline">Get a personalized catch-up</span>
+        </div>
+        <ChevronDown size={14} className={`text-muted-foreground transition-transform ${collapsed ? "" : "rotate-180"}`} />
+      </button>
+
+      {!collapsed && (
+        <div className="px-4 md:px-5 pb-4 md:pb-5 space-y-3 border-t border-border pt-4">
+          {/* Time range */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground text-xs shrink-0">Looking back:</span>
+            <div className="flex gap-1">
+              {TIME_RANGES.map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => setTimeRange(t.key)}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                    timeRange === t.key
+                      ? "bg-primary/15 border-primary/30 text-primary"
+                      : "border-border text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Quick prompts */}
+          <div className="flex flex-wrap gap-1.5">
+            {QUICK_PROMPTS.map((p) => (
+              <button
+                key={p}
+                onClick={() => { setQuery(p); ask(p); }}
+                className="text-xs border border-border text-muted-foreground hover:border-primary/30 hover:text-foreground px-2.5 py-1 rounded-full transition-colors"
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+
+          {/* Free-text input */}
+          <div className="relative">
+            <textarea
+              ref={textareaRef}
+              rows={2}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); } }}
+              placeholder={`e.g. "Fill me in on my Main Wallet tokens and any announcements I missed this week"`}
+              className="w-full bg-background border border-border rounded-xl px-4 py-3 pr-24 text-foreground text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/40 resize-none leading-relaxed"
+            />
+            <button
+              onClick={() => ask()}
+              disabled={loading || !query.trim()}
+              className="absolute right-3 bottom-3 bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed text-primary-foreground text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
+            >
+              {loading ? <RefreshCw size={11} className="animate-spin" /> : <Sparkles size={11} />}
+              {loading ? "..." : "Ask"}
+            </button>
+          </div>
+
+          {/* Loading */}
+          {loading && (
+            <div className="bg-background rounded-xl border border-border p-4 space-y-2">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                <span className="text-muted-foreground text-xs">Brainiac is reading your feed and wallets...</span>
+              </div>
+              {[70, 50, 85, 40, 65].map((w, i) => (
+                <div key={i} className="h-2.5 bg-border rounded animate-pulse" style={{ width: `${w}%` }} />
+              ))}
+            </div>
+          )}
+
+          {/* Error */}
+          {error && !loading && (
+            <p className="text-red-400 text-xs">{error}</p>
+          )}
+
+          {/* Brief output */}
+          {brief && !loading && (
+            <div className="bg-background rounded-xl border border-border p-4">
+              <pre className="text-muted-foreground text-sm leading-relaxed whitespace-pre-wrap font-sans">{brief}</pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const [greeting] = useState(() => {
@@ -55,10 +207,10 @@ export default function DashboardPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-6 md:mb-8">
         {[
-          { label: "New signals",   value: "12", sub: "last 24h",  icon: <Zap size={14} className="text-cyan-400" />,      color: "text-cyan-400" },
-          { label: "Communities",   value: "4",  sub: "connected", icon: <MessageSquare size={14} className="text-primary" />, color: "text-primary" },
-          { label: "Wallets",       value: "2",  sub: "tracked",   icon: <Wallet size={14} className="text-purple-400" />,  color: "text-purple-400" },
-          { label: "Drafts",        value: "8",  sub: "ready",     icon: <TrendingUp size={14} className="text-green-400" />, color: "text-green-400" },
+          { label: "New signals",  value: "12", sub: "last 24h",  icon: <Zap size={14} className="text-cyan-400" />,          color: "text-cyan-400" },
+          { label: "Communities", value: "4",  sub: "connected", icon: <MessageSquare size={14} className="text-primary" />,   color: "text-primary" },
+          { label: "Wallets",     value: "2",  sub: "tracked",   icon: <Wallet size={14} className="text-purple-400" />,       color: "text-purple-400" },
+          { label: "Drafts",      value: "8",  sub: "ready",     icon: <TrendingUp size={14} className="text-green-400" />,    color: "text-green-400" },
         ].map((s) => (
           <div
             key={s.label}
@@ -75,13 +227,14 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* Main grid: on mobile wallets+draft come FIRST, then feed */}
+      {/* Briefing / Ask Brainiac */}
+      <BriefingCard />
+
+      {/* Main grid: wallets+draft first on mobile, feed second */}
       <div className="grid md:grid-cols-3 gap-4 md:gap-5">
 
-        {/* Right column: wallets + quick draft — first on mobile, right on desktop */}
+        {/* Right column: wallets + quick draft */}
         <div className="order-first md:order-last space-y-4">
-
-          {/* Wallets */}
           <div className="bg-card rounded-2xl border border-border overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3.5 border-b border-border">
               <h2 className="font-display font-semibold text-foreground text-sm">Wallets</h2>
@@ -107,32 +260,25 @@ export default function DashboardPage() {
                 </div>
               ))}
               <Link href="/wallet">
-                <button
-                  data-testid="button-add-wallet"
-                  className="flex items-center justify-center gap-1.5 text-muted-foreground hover:text-foreground text-xs py-2 w-full border border-dashed border-border rounded-xl transition-colors"
-                >
+                <button data-testid="button-add-wallet" className="flex items-center justify-center gap-1.5 text-muted-foreground hover:text-foreground text-xs py-2 w-full border border-dashed border-border rounded-xl transition-colors">
                   <Plus size={12} /> Add wallet
                 </button>
               </Link>
             </div>
           </div>
 
-          {/* Quick Draft */}
           <div className="bg-card rounded-2xl border border-border p-4">
             <h2 className="font-display font-semibold text-foreground text-sm mb-1.5">Quick Draft</h2>
             <p className="text-muted-foreground text-xs mb-3 leading-relaxed">Let AI turn today's feed into a thread or Space recap.</p>
             <Link href="/brain">
-              <button
-                data-testid="button-open-brain"
-                className="block w-full text-center bg-primary/10 hover:bg-primary/20 border border-primary/20 hover:border-primary/40 text-primary text-sm font-medium py-2.5 rounded-xl transition-all"
-              >
+              <button data-testid="button-open-brain" className="block w-full text-center bg-primary/10 hover:bg-primary/20 border border-primary/20 hover:border-primary/40 text-primary text-sm font-medium py-2.5 rounded-xl transition-all">
                 Open Brain →
               </button>
             </Link>
           </div>
         </div>
 
-        {/* Live Feed — full width on mobile (appears after wallets), 2/3 on desktop */}
+        {/* Live Feed */}
         <div className="md:col-span-2 order-last md:order-first bg-card rounded-2xl border border-border overflow-hidden">
           <div className="flex items-center justify-between px-4 md:px-5 py-3.5 md:py-4 border-b border-border">
             <div className="flex items-center gap-2">
@@ -153,10 +299,8 @@ export default function DashboardPage() {
                 data-testid={`card-feed-${item.id}`}
                 className={`px-4 md:px-5 py-3 md:py-3.5 hover:bg-white/[0.02] transition-colors ${idx >= 2 ? "hidden md:block" : ""}`}
               >
-                <div className="flex items-center gap-1.5 md:gap-2 mb-1.5 flex-wrap">
-                  <span className={`text-xs px-2 py-0.5 rounded-md font-medium shrink-0 ${
-                    item.source === "Discord" ? "bg-primary/15 text-primary" : "bg-cyan-500/15 text-cyan-400"
-                  }`}>
+                <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                  <span className={`text-xs px-2 py-0.5 rounded-md font-medium shrink-0 ${item.source === "Discord" ? "bg-primary/15 text-primary" : "bg-cyan-500/15 text-cyan-400"}`}>
                     {item.source}
                   </span>
                   <span className="text-muted-foreground/60 text-xs truncate max-w-[120px] md:max-w-none">{item.server}</span>
