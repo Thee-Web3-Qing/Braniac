@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { Plus, ExternalLink, TrendingUp, TrendingDown, X, Copy, Check, Pencil, ArrowUpDown, Layers, Cpu, RefreshCw, Database } from "lucide-react";
-import { getWalletActivity, activityToText, getActiveProtocols, getTotalYield, type ChainActivity } from "../lib/wallet-activity";
+import { Plus, ExternalLink, TrendingUp, TrendingDown, X, Copy, Check, Pencil, ArrowUpDown, Layers, Cpu, RefreshCw, Database, Loader2 } from "lucide-react";
+import { getWalletActivity, activityToText, getActiveProtocols, getTotalYield } from "../lib/wallet-activity";
 import { saveToOG, formatCID, OG_EXPLORER, type OGRecord } from "../lib/og-storage";
 
 type Wallet = {
@@ -10,6 +10,25 @@ type Wallet = {
   chain: string;
   pnl: string;
   positive: boolean;
+};
+
+type AlchemyToken = {
+  address: string;
+  symbol: string;
+  name: string;
+  balance: string;
+  decimals: number;
+};
+
+type AlchemyTx = {
+  hash: string;
+  from: string;
+  to: string;
+  value: string;
+  asset: string;
+  category: string;
+  timestamp: string;
+  block: number;
 };
 
 const initialWallets: Wallet[] = [
@@ -28,6 +47,9 @@ const TYPE_COLORS: Record<string, string> = {
   claim:    "bg-cyan-500/10 text-cyan-400",
   mint:     "bg-orange-500/10 text-orange-400",
   bridge:   "bg-primary/10 text-primary",
+  external: "bg-muted text-muted-foreground",
+  erc20:    "bg-blue-500/10 text-blue-400",
+  erc721:   "bg-orange-500/10 text-orange-400",
 };
 
 const QUICK_QUESTIONS = [
@@ -72,7 +94,7 @@ function AddWalletModal({ onClose, onAdd }: { onClose: () => void; onAdd: (label
     return "Ethereum";
   };
 
-  const handlePaste = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setAddress(val);
     setChain(detectChain(val));
@@ -92,7 +114,7 @@ function AddWalletModal({ onClose, onAdd }: { onClose: () => void; onAdd: (label
           <div>
             <label className="text-muted-foreground text-xs block mb-1.5">Wallet address</label>
             <input data-testid="input-wallet-address" type="text" placeholder="0x... or Solana address" value={address}
-              onChange={handlePaste}
+              onChange={handleChange}
               className="w-full bg-background border border-border rounded-xl px-4 py-3 text-foreground text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 font-mono" />
           </div>
           <div>
@@ -135,19 +157,69 @@ function OGBadge({ record }: { record: OGRecord }) {
   );
 }
 
+function useAlchemyBalances(address: string, chain: string) {
+  const [data, setData] = useState<{ nativeBalance: string; nativeSymbol: string; tokens: AlchemyToken[] } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!address || chain === "Solana" || chain === "Polygon") return;
+    setLoading(true);
+    setError(null);
+    fetch(`/api/wallet/balances/${address}?chain=${chain}`)
+      .then((r) => r.json())
+      .then((d: { nativeBalance?: string; nativeSymbol?: string; tokens?: AlchemyToken[]; error?: string }) => {
+        if (d.error) setError(d.error);
+        else setData({ nativeBalance: d.nativeBalance ?? "0", nativeSymbol: d.nativeSymbol ?? "ETH", tokens: d.tokens ?? [] });
+      })
+      .catch(() => setError("Failed to fetch balances"))
+      .finally(() => setLoading(false));
+  }, [address, chain]);
+
+  return { data, loading, error };
+}
+
+function useAlchemyTxs(address: string, chain: string) {
+  const [txs, setTxs] = useState<AlchemyTx[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetch_ = () => {
+    if (!address || chain === "Solana" || chain === "Polygon") return;
+    setLoading(true);
+    setError(null);
+    fetch(`/api/wallet/transactions/${address}?chain=${chain}&limit=20`)
+      .then((r) => r.json())
+      .then((d: { transactions?: AlchemyTx[]; error?: string }) => {
+        if (d.error) setError(d.error);
+        else setTxs(d.transactions ?? []);
+      })
+      .catch(() => setError("Failed to fetch transactions"))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { fetch_(); }, [address, chain]);
+
+  return { txs, loading, error, refetch: fetch_ };
+}
+
 function ActivityTab({ wallet }: { wallet: Wallet }) {
-  const activity = getWalletActivity(wallet.chain);
-  const protocols = getActiveProtocols(activity);
-  const totalYield = getTotalYield(activity);
+  const isMock = wallet.address.length < 42;
+  const { txs, loading, error, refetch } = useAlchemyTxs(wallet.address, wallet.chain);
+
+  const mockActivity = getWalletActivity(wallet.chain);
+  const protocols    = getActiveProtocols(mockActivity);
+  const totalYield   = getTotalYield(mockActivity);
+
+  const isReal = !isMock && txs !== null;
 
   return (
     <div className="space-y-4">
-      {/* Summary strips */}
       <div className="grid grid-cols-3 gap-2">
         {[
           { label: "Protocols used",   value: protocols.length.toString() },
           { label: "Total yield",      value: `$${totalYield}` },
-          { label: "Active positions", value: activity.filter((a) => a.type === "deposit" || a.type === "stake").length.toString() },
+          { label: "Active positions", value: mockActivity.filter((a) => a.type === "deposit" || a.type === "stake").length.toString() },
         ].map((s) => (
           <div key={s.label} className="bg-card border border-border rounded-xl px-3 py-2.5">
             <p className="text-muted-foreground text-xs mb-1">{s.label}</p>
@@ -156,8 +228,7 @@ function ActivityTab({ wallet }: { wallet: Wallet }) {
         ))}
       </div>
 
-      {/* Protocol list */}
-      {protocols.length > 0 && (
+      {!isMock && protocols.length > 0 && (
         <div className="bg-card border border-border rounded-xl px-4 py-3">
           <p className="text-muted-foreground text-xs mb-2">Active in</p>
           <div className="flex flex-wrap gap-1.5">
@@ -168,36 +239,83 @@ function ActivityTab({ wallet }: { wallet: Wallet }) {
         </div>
       )}
 
-      {/* Activity timeline */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-border">
-          <h3 className="font-display font-semibold text-foreground text-sm">On-chain activity</h3>
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+          <h3 className="font-display font-semibold text-foreground text-sm">
+            {isReal ? "Live on-chain activity" : "On-chain activity"}
+          </h3>
+          <div className="flex items-center gap-2">
+            {isReal && <span className="text-xs text-green-400 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" /> Live</span>}
+            {!isMock && (
+              <button onClick={refetch} className="text-muted-foreground/50 hover:text-muted-foreground transition-colors">
+                <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+              </button>
+            )}
+          </div>
         </div>
-        <div className="divide-y divide-border">
-          {activity.map((a) => (
-            <div key={a.id} className="flex items-start gap-3 px-4 py-3 hover:bg-white/[0.02] transition-colors">
-              <div className="mt-0.5 shrink-0">
-                <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${TYPE_COLORS[a.type] || "bg-muted text-muted-foreground"}`}>
-                  {a.type}
-                </span>
+
+        {loading && (
+          <div className="flex items-center justify-center py-12 gap-2 text-muted-foreground text-sm">
+            <Loader2 size={16} className="animate-spin" /> Fetching from Alchemy...
+          </div>
+        )}
+
+        {error && !loading && (
+          <div className="px-4 py-3 text-red-400 text-xs">{error}</div>
+        )}
+
+        {isReal && !loading && (
+          <div className="divide-y divide-border">
+            {txs!.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground text-sm">No transactions found.</div>
+            )}
+            {txs!.map((tx) => (
+              <div key={tx.hash} className="flex items-start gap-3 px-4 py-3 hover:bg-white/[0.02] transition-colors">
+                <div className="mt-0.5 shrink-0">
+                  <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${TYPE_COLORS[tx.category] || "bg-muted text-muted-foreground"}`}>
+                    {tx.category}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-foreground text-xs font-medium font-mono truncate">{short(tx.to || tx.from)}</p>
+                  <p className="text-muted-foreground text-xs mt-0.5">{tx.value} {tx.asset}</p>
+                </div>
+                <div className="text-right shrink-0 ml-2">
+                  <a href={`https://${wallet.chain === "Ethereum" ? "etherscan.io" : wallet.chain === "Base" ? "basescan.org" : "arbiscan.io"}/tx/${tx.hash}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="text-muted-foreground/40 hover:text-primary transition-colors">
+                    <ExternalLink size={11} />
+                  </a>
+                  <p className="text-muted-foreground/50 text-xs">{tx.timestamp ? new Date(tx.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}</p>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-foreground text-xs font-medium truncate">{a.protocol}</p>
-                <p className="text-muted-foreground text-xs leading-relaxed mt-0.5">{a.description}</p>
-                {a.apy && (
-                  <p className="text-green-400 text-xs mt-0.5">{a.apy} APY {a.yieldEarned ? `— ${a.yieldEarned}` : ""}</p>
-                )}
-                {!a.apy && a.yieldEarned && (
-                  <p className="text-cyan-400 text-xs mt-0.5">{a.yieldEarned}</p>
-                )}
+            ))}
+          </div>
+        )}
+
+        {isMock && !loading && (
+          <div className="divide-y divide-border">
+            {mockActivity.map((a) => (
+              <div key={a.id} className="flex items-start gap-3 px-4 py-3 hover:bg-white/[0.02] transition-colors">
+                <div className="mt-0.5 shrink-0">
+                  <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${TYPE_COLORS[a.type] || "bg-muted text-muted-foreground"}`}>
+                    {a.type}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-foreground text-xs font-medium truncate">{a.protocol}</p>
+                  <p className="text-muted-foreground text-xs leading-relaxed mt-0.5">{a.description}</p>
+                  {a.apy && <p className="text-green-400 text-xs mt-0.5">{a.apy} APY {a.yieldEarned ? `— ${a.yieldEarned}` : ""}</p>}
+                  {!a.apy && a.yieldEarned && <p className="text-cyan-400 text-xs mt-0.5">{a.yieldEarned}</p>}
+                </div>
+                <div className="text-right shrink-0 ml-2">
+                  <p className="text-foreground text-xs font-medium">{a.usdValue}</p>
+                  <p className="text-muted-foreground/50 text-xs">{a.date}</p>
+                </div>
               </div>
-              <div className="text-right shrink-0 ml-2">
-                <p className="text-foreground text-xs font-medium">{a.usdValue}</p>
-                <p className="text-muted-foreground/50 text-xs">{a.date}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -244,7 +362,6 @@ function IntelTab({ wallet }: { wallet: Wallet }) {
 
   return (
     <div className="space-y-4">
-      {/* Quick questions */}
       <div>
         <p className="text-muted-foreground text-xs mb-2">Quick questions</p>
         <div className="flex flex-wrap gap-1.5">
@@ -257,16 +374,11 @@ function IntelTab({ wallet }: { wallet: Wallet }) {
         </div>
       </div>
 
-      {/* Free text */}
       <div className="relative">
-        <textarea
-          rows={2}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+        <textarea rows={2} value={query} onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (query.trim()) ask(query); } }}
           placeholder={`Ask anything about your ${wallet.label}...`}
-          className="w-full bg-background border border-border rounded-xl px-4 py-3 pr-20 text-foreground text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/40 resize-none"
-        />
+          className="w-full bg-background border border-border rounded-xl px-4 py-3 pr-20 text-foreground text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/40 resize-none" />
         <button onClick={() => { if (query.trim()) ask(query); }} disabled={loading || !query.trim()}
           className="absolute right-3 bottom-3 bg-primary hover:bg-primary/90 disabled:opacity-40 text-primary-foreground text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors">
           {loading ? <RefreshCw size={11} className="animate-spin" /> : <Cpu size={11} />}
@@ -274,7 +386,6 @@ function IntelTab({ wallet }: { wallet: Wallet }) {
         </button>
       </div>
 
-      {/* Loading */}
       {loading && (
         <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">
@@ -289,10 +400,8 @@ function IntelTab({ wallet }: { wallet: Wallet }) {
         </div>
       )}
 
-      {/* Error */}
       {error && !loading && <p className="text-red-400 text-xs">{error}</p>}
 
-      {/* Answer */}
       {answer && !loading && (
         <div className="bg-card border border-border rounded-xl p-4">
           <pre className="text-muted-foreground text-sm leading-relaxed whitespace-pre-wrap font-sans">{answer}</pre>
@@ -300,7 +409,6 @@ function IntelTab({ wallet }: { wallet: Wallet }) {
         </div>
       )}
 
-      {/* Footer note */}
       <p className="text-muted-foreground/40 text-xs">
         All Q&A history is stored on 0G decentralized storage — your data stays yours.
       </p>
@@ -314,23 +422,18 @@ function OverviewTab({ wallet, renamingId, onStartRename, onSaveRename }: {
   onStartRename: () => void;
   onSaveRename: (v: string) => void;
 }) {
-  const activity = getWalletActivity(wallet.chain);
-  const protocols = getActiveProtocols(activity);
-
-  const projects = activity
+  const isMock = wallet.address.length < 42;
+  const { data: balanceData, loading: balLoading } = useAlchemyBalances(wallet.address, wallet.chain);
+  const mockActivity = getWalletActivity(wallet.chain);
+  const protocols    = getActiveProtocols(mockActivity);
+  const projects     = mockActivity
     .filter((a) => a.type === "deposit" || a.type === "stake" || a.type === "mint")
-    .map((a) => ({
-      name: a.protocol,
-      type: a.type === "mint" ? "NFT" : "DeFi",
-      status: "active",
-      value: a.usdValue,
-      apy: a.apy,
-      date: a.date,
-    }));
+    .map((a) => ({ name: a.protocol, type: a.type === "mint" ? "NFT" : "DeFi", status: "active", value: a.usdValue, apy: a.apy, date: a.date }));
+
+  const explorerBase = wallet.chain === "Ethereum" ? "etherscan.io" : wallet.chain === "Base" ? "basescan.org" : "arbiscan.io";
 
   return (
     <div className="space-y-4">
-      {/* Summary card */}
       <div className="bg-card border border-border rounded-2xl p-4 md:p-5">
         <div className="flex items-start justify-between mb-4">
           <div>
@@ -350,7 +453,7 @@ function OverviewTab({ wallet, renamingId, onStartRename, onSaveRename }: {
             <div className="flex items-center gap-2 mt-1">
               <span className="text-muted-foreground/60 text-xs font-mono">{short(wallet.address)}</span>
               <CopyButton text={wallet.address} />
-              <a href={`https://${wallet.chain === "Ethereum" ? "etherscan.io" : wallet.chain === "Base" ? "basescan.org" : "arbiscan.io"}/address/${wallet.address}`}
+              <a href={`https://${explorerBase}/address/${wallet.address}`}
                 target="_blank" rel="noopener noreferrer"
                 className="text-muted-foreground/40 hover:text-muted-foreground transition-colors">
                 <ExternalLink size={12} />
@@ -365,21 +468,35 @@ function OverviewTab({ wallet, renamingId, onStartRename, onSaveRename }: {
             <p className="text-muted-foreground/50 text-xs mt-0.5">est. P&L</p>
           </div>
         </div>
+
         <div className="grid grid-cols-3 gap-2">
           {[
-            { label: "Chain",     value: wallet.chain },
-            { label: "Protocols", value: protocols.length.toString() },
-            { label: "Active",    value: projects.filter((p) => p.status === "active").length.toString() },
+            { label: "Chain",        value: wallet.chain },
+            { label: "Protocols",    value: protocols.length.toString() },
+            { label: "Native bal.",  value: balLoading ? "..." : balanceData ? `${parseFloat(balanceData.nativeBalance).toFixed(4)} ${balanceData.nativeSymbol}` : isMock ? "demo" : "n/a" },
           ].map((s) => (
             <div key={s.label} className="bg-background rounded-xl px-3 py-2.5">
               <p className="text-muted-foreground text-xs mb-1">{s.label}</p>
-              <p className="text-foreground font-display font-semibold text-sm">{s.value}</p>
+              <p className="text-foreground font-display font-semibold text-sm truncate">{s.value}</p>
             </div>
           ))}
         </div>
+
+        {balanceData && balanceData.tokens.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-border">
+            <p className="text-muted-foreground text-xs mb-2">Token balances</p>
+            <div className="space-y-1.5">
+              {balanceData.tokens.slice(0, 5).map((t) => (
+                <div key={t.address} className="flex items-center justify-between">
+                  <span className="text-foreground text-xs">{t.symbol}</span>
+                  <span className="text-muted-foreground text-xs font-mono">{parseFloat(t.balance).toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Active positions */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden">
         <div className="px-4 py-3 border-b border-border">
           <h3 className="font-display font-semibold text-foreground text-sm">Active positions</h3>
@@ -409,25 +526,25 @@ function OverviewTab({ wallet, renamingId, onStartRename, onSaveRename }: {
 }
 
 const INNER_TABS = [
-  { id: "overview",  label: "Overview",      icon: Layers },
-  { id: "activity",  label: "Activity",      icon: ArrowUpDown },
-  { id: "intel",     label: "Intelligence",  icon: Cpu },
+  { id: "overview",  label: "Overview",     icon: Layers },
+  { id: "activity",  label: "Activity",     icon: ArrowUpDown },
+  { id: "intel",     label: "Intelligence", icon: Cpu },
 ] as const;
 
 type InnerTab = typeof INNER_TABS[number]["id"];
 
 export default function WalletPage() {
-  const [wallets, setWallets]         = useState<Wallet[]>(initialWallets);
+  const [wallets, setWallets]           = useState<Wallet[]>(initialWallets);
   const [activeWalletId, setActiveWalletId] = useState(initialWallets[0].id);
-  const [innerTab, setInnerTab]       = useState<InnerTab>("overview");
-  const [renamingId, setRenamingId]   = useState<number | null>(null);
-  const [showModal, setShowModal]     = useState(false);
+  const [innerTab, setInnerTab]         = useState<InnerTab>("overview");
+  const [renamingId, setRenamingId]     = useState<number | null>(null);
+  const [showModal, setShowModal]       = useState(false);
 
   const wallet = wallets.find((w) => w.id === activeWalletId)!;
 
   const addWallet = (label: string, address: string, chain: string) => {
     const newId = Math.max(...wallets.map((w) => w.id)) + 1;
-    setWallets((prev) => [...prev, { id: newId, address, label, chain, pnl: "$0", positive: true }]);
+    setWallets((prev) => [...prev, { id: newId, address, label, chain, pnl: "loading...", positive: true }]);
     setActiveWalletId(newId);
     setInnerTab("overview");
   };
@@ -441,7 +558,6 @@ export default function WalletPage() {
     <div className="p-4 md:p-6 max-w-4xl mx-auto animate-fade-in">
       {showModal && <AddWalletModal onClose={() => setShowModal(false)} onAdd={addWallet} />}
 
-      {/* Header */}
       <div className="flex items-center justify-between mb-5 md:mb-6">
         <div>
           <h1 className="font-display font-bold text-foreground text-xl md:text-2xl">Wallet Memory</h1>
@@ -455,7 +571,6 @@ export default function WalletPage() {
         </button>
       </div>
 
-      {/* Wallet selector tabs */}
       <div className="flex items-center gap-2 mb-4 overflow-x-auto scrollbar-none pb-0.5">
         {wallets.map((w) => (
           <button key={w.id} data-testid={`button-wallet-tab-${w.id}`}
@@ -476,7 +591,6 @@ export default function WalletPage() {
         </button>
       </div>
 
-      {/* Inner tabs */}
       <div className="flex gap-1 mb-5 bg-card border border-border rounded-xl p-1">
         {INNER_TABS.map(({ id, label, icon: Icon }) => (
           <button key={id} data-testid={`button-inner-tab-${id}`}
@@ -492,14 +606,9 @@ export default function WalletPage() {
         ))}
       </div>
 
-      {/* Tab content */}
       {innerTab === "overview" && (
-        <OverviewTab
-          wallet={wallet}
-          renamingId={renamingId}
-          onStartRename={() => setRenamingId(wallet.id)}
-          onSaveRename={renameWallet}
-        />
+        <OverviewTab wallet={wallet} renamingId={renamingId}
+          onStartRename={() => setRenamingId(wallet.id)} onSaveRename={renameWallet} />
       )}
       {innerTab === "activity" && <ActivityTab wallet={wallet} />}
       {innerTab === "intel"    && <IntelTab    wallet={wallet} />}
