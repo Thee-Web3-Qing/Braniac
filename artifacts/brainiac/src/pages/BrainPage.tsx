@@ -10,7 +10,7 @@ const DRAFT_TYPES = [
 ];
 
 const mockDrafts = [
-  { id: 1, type: "X Thread", title: "Alpha thread — June 17", preview: "Biggest signals from Web3 this week that most people missed...", created: "2h ago" },
+  { id: 1, type: "X Thread", title: "Alpha thread - June 17", preview: "Biggest signals from Web3 this week that most people missed...", created: "2h ago" },
   { id: 2, type: "Space Recap", title: "Recap: DeFi 2025 with Bankless", preview: "Yesterday's Space with @bankless covered 3 key narratives shaping DeFi this summer...", created: "1d ago" },
   { id: 3, type: "Alpha Brief", title: "Weekly Alpha Brief #12", preview: "This week: Base DEX launch, LayerZero snapshot, and whale moves to watch...", created: "3d ago" },
 ];
