@@ -1,8 +1,20 @@
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Brain, Zap, Wallet, MessageSquare, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { usePrivy } from "@privy-io/react-auth";
 
 export default function LandingPage() {
+  const { login, authenticated } = usePrivy();
+  const [, navigate] = useLocation();
+
+  const handleStart = () => {
+    if (authenticated) {
+      navigate("/dashboard");
+    } else {
+      login();
+    }
+  };
+
   return (
     <div className="min-h-[100dvh] bg-[#0A0E1A] text-foreground font-sans selection:bg-primary/30">
 
@@ -14,14 +26,12 @@ export default function LandingPage() {
             <span className="font-display font-bold text-lg md:text-xl tracking-tight">Brainiac</span>
           </Link>
           <div className="flex items-center gap-2 md:gap-4">
-            <Link href="/dashboard" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors hidden sm:block">
+            <button onClick={handleStart} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors hidden sm:block">
               Sign in
-            </Link>
-            <Link href="/dashboard">
-              <Button size="sm" className="bg-primary hover:bg-primary/90 text-white font-medium rounded-full px-4 md:px-5 text-sm">
-                Get started
-              </Button>
-            </Link>
+            </button>
+            <Button onClick={handleStart} size="sm" className="bg-primary hover:bg-primary/90 text-white font-medium rounded-full px-4 md:px-5 text-sm">
+              Get started
+            </Button>
           </div>
         </div>
       </nav>
@@ -49,12 +59,10 @@ export default function LandingPage() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 md:gap-4">
-            <Link href="/dashboard" className="w-full sm:w-auto">
-              <Button size="lg" className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-white rounded-full px-8 h-12 text-base">
-                Start for free
-              </Button>
-            </Link>
-            <Button size="lg" variant="outline" className="w-full sm:w-auto rounded-full px-8 h-12 text-base border-white/10 hover:bg-white/5">
+            <Button onClick={handleStart} size="lg" className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-white rounded-full px-8 h-12 text-base">
+              Start for free
+            </Button>
+            <Button size="lg" variant="outline" onClick={handleStart} className="w-full sm:w-auto rounded-full px-8 h-12 text-base border-white/10 hover:bg-white/5">
               See how it works
             </Button>
           </div>

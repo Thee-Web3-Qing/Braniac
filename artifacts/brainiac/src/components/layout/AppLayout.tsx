@@ -1,7 +1,8 @@
 import { useState, ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { Brain, LayoutDashboard, Zap, Wallet, MessageSquare, ChevronRight, Settings, X, CreditCard } from "lucide-react";
+import { Brain, LayoutDashboard, Zap, Wallet, MessageSquare, ChevronRight, Settings, X, CreditCard, LogOut, LogIn } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { usePrivy, useWallets } from "@privy-io/react-auth";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -10,9 +11,49 @@ const navItems = [
   { href: "/brain",    label: "Brain",       icon: MessageSquare },
 ];
 
+function getInitials(name?: string, email?: string): string {
+  if (name) {
+    const parts = name.trim().split(" ");
+    return parts.length >= 2
+      ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+      : parts[0].slice(0, 2).toUpperCase();
+  }
+  if (email) return email.slice(0, 2).toUpperCase();
+  return "?";
+}
+
+function shortAddr(addr: string) {
+  return addr.slice(0, 6) + "..." + addr.slice(-4);
+}
+
 export default function AppLayout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const [profileOpen, setProfileOpen] = useState(false);
+
+  const { ready, authenticated, user, login, logout } = usePrivy();
+  const { wallets } = useWallets();
+
+  const displayName =
+    user?.google?.name ??
+    user?.twitter?.name ??
+    (user?.email?.address ? user.email.address.split("@")[0] : undefined) ??
+    (wallets[0]?.address ? shortAddr(wallets[0].address) : undefined) ??
+    "Anon";
+
+  const displayEmail =
+    user?.email?.address ??
+    user?.google?.email ??
+    (wallets[0]?.address ? shortAddr(wallets[0].address) : "");
+
+  const avatarSrc =
+    user?.google?.profilePictureUrl ??
+    user?.twitter?.profilePictureUrl ??
+    undefined;
+
+  const initials = getInitials(
+    user?.google?.name ?? user?.twitter?.name,
+    user?.email?.address ?? wallets[0]?.address
+  );
 
   return (
     <div className="min-h-[100dvh] bg-background text-foreground flex">
@@ -52,20 +93,36 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="p-3 mt-auto border-t border-border">
-          <button
-            onClick={() => setProfileOpen(true)}
-            className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-white/5 transition-colors text-left"
-          >
-            <Avatar className="w-8 h-8 border border-border shrink-0">
-              <AvatarImage src="" />
-              <AvatarFallback className="bg-primary/20 text-primary text-xs font-semibold">GS</AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium truncate text-foreground">Giwa Sheedah</div>
-              <div className="text-xs text-muted-foreground">Free plan</div>
-            </div>
-            <Settings className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-          </button>
+          {ready && authenticated ? (
+            <button
+              onClick={() => setProfileOpen(true)}
+              className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-white/5 transition-colors text-left"
+            >
+              <Avatar className="w-8 h-8 border border-border shrink-0">
+                <AvatarImage src={avatarSrc} />
+                <AvatarFallback className="bg-primary/20 text-primary text-xs font-semibold">{initials}</AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate text-foreground">{displayName}</div>
+                <div className="text-xs text-muted-foreground truncate">{displayEmail}</div>
+              </div>
+              <Settings className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            </button>
+          ) : (
+            <button
+              onClick={login}
+              disabled={!ready}
+              className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-primary/10 transition-colors text-left disabled:opacity-50"
+            >
+              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                <LogIn className="w-4 h-4 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-primary">Sign in</div>
+                <div className="text-xs text-muted-foreground">Connect your account</div>
+              </div>
+            </button>
+          )}
         </div>
       </aside>
 
@@ -77,20 +134,30 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           </div>
           <span className="font-display font-bold text-base tracking-tight">Brainiac</span>
         </Link>
-        <button
-          onClick={() => setProfileOpen(true)}
-          className="flex items-center justify-center"
-          aria-label="Profile and settings"
-        >
-          <Avatar className="w-8 h-8 border border-border">
-            <AvatarImage src="" />
-            <AvatarFallback className="bg-primary/20 text-primary text-xs font-semibold">GS</AvatarFallback>
-          </Avatar>
-        </button>
+        {ready && authenticated ? (
+          <button
+            onClick={() => setProfileOpen(true)}
+            className="flex items-center justify-center"
+            aria-label="Profile and settings"
+          >
+            <Avatar className="w-8 h-8 border border-border">
+              <AvatarImage src={avatarSrc} />
+              <AvatarFallback className="bg-primary/20 text-primary text-xs font-semibold">{initials}</AvatarFallback>
+            </Avatar>
+          </button>
+        ) : (
+          <button
+            onClick={login}
+            disabled={!ready}
+            className="text-sm font-medium text-primary disabled:opacity-50"
+          >
+            Sign in
+          </button>
+        )}
       </header>
 
-      {/* Profile sheet (shared mobile + desktop) */}
-      {profileOpen && (
+      {/* Profile sheet */}
+      {profileOpen && authenticated && (
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setProfileOpen(false)} />
           <aside className="absolute right-0 top-0 bottom-0 w-72 bg-sidebar border-l border-border flex flex-col animate-slide-up">
@@ -101,18 +168,29 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               </button>
             </div>
 
-            {/* Profile card */}
             <div className="p-5 border-b border-border">
               <div className="flex items-center gap-3 mb-4">
                 <Avatar className="w-11 h-11 border border-border shrink-0">
-                  <AvatarImage src="" />
-                  <AvatarFallback className="bg-primary/20 text-primary font-semibold">GS</AvatarFallback>
+                  <AvatarImage src={avatarSrc} />
+                  <AvatarFallback className="bg-primary/20 text-primary font-semibold">{initials}</AvatarFallback>
                 </Avatar>
-                <div>
-                  <p className="text-foreground font-medium text-sm">Giwa Sheedah</p>
-                  <p className="text-muted-foreground text-xs">giwa@example.com</p>
+                <div className="min-w-0">
+                  <p className="text-foreground font-medium text-sm truncate">{displayName}</p>
+                  <p className="text-muted-foreground text-xs truncate">{displayEmail}</p>
                 </div>
               </div>
+
+              {wallets.length > 0 && (
+                <div className="bg-background rounded-xl border border-border p-3 mb-3">
+                  <p className="text-xs text-muted-foreground mb-2">Connected wallet</p>
+                  {wallets.map((w) => (
+                    <p key={w.address} className="text-xs font-mono text-foreground truncate">
+                      {shortAddr(w.address)}
+                    </p>
+                  ))}
+                </div>
+              )}
+
               <div className="bg-background rounded-xl border border-border p-3">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs text-muted-foreground">Current plan</span>
@@ -125,7 +203,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               </div>
             </div>
 
-            {/* Actions */}
             <div className="p-3 space-y-1">
               <button className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors text-left">
                 <Settings className="w-4 h-4" /> Settings
@@ -136,8 +213,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             </div>
 
             <div className="mt-auto p-4 border-t border-border">
-              <button className="text-muted-foreground/60 hover:text-muted-foreground text-xs transition-colors">
-                Sign out
+              <button
+                onClick={() => { logout(); setProfileOpen(false); }}
+                className="flex items-center gap-2 text-muted-foreground/60 hover:text-muted-foreground text-xs transition-colors"
+              >
+                <LogOut className="w-3.5 h-3.5" /> Sign out
               </button>
             </div>
           </aside>
