@@ -48,7 +48,7 @@ function App() {
     <PrivyProvider
       appId={PRIVY_APP_ID}
       config={{
-        loginMethods: ["email", "wallet"],
+        loginMethods: ["email", "google", "twitter", "wallet"],
         appearance: {
           theme: "dark",
           accentColor: "#6366f1",
@@ -57,6 +57,9 @@ function App() {
         },
         embeddedWallets: {
           createOnLogin: "users-without-wallets",
+        },
+        externalWallets: {
+          solana: { connectors: [] as [] },
         },
       }}
     >
