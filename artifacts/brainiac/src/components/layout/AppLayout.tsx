@@ -1,8 +1,9 @@
-import { useState, ReactNode } from "react";
+import { useState, useEffect, ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { Brain, LayoutDashboard, Zap, Wallet, MessageSquare, ChevronRight, Settings, X, CreditCard, LogOut, LogIn, Check, Plus, Loader2 } from "lucide-react";
+import { Brain, LayoutDashboard, Zap, Wallet, MessageSquare, ChevronRight, Settings, X, CreditCard, LogOut, LogIn, Check, Plus, Loader2, AlertTriangle } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { usePrivy, useWallets, useLinkWithOAuth, useConnectWallet } from "@privy-io/react-auth";
+import { useToast } from "@/hooks/use-toast";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -90,11 +91,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [linkingGoogle, setLinkingGoogle] = useState(false);
   const [linkingTwitter, setLinkingTwitter] = useState(false);
+  const [linkConflict, setLinkConflict] = useState<"google" | "twitter" | null>(null);
 
   const { ready, authenticated, user, login, logout } = usePrivy();
   const { wallets } = useWallets();
   const { initOAuth, loading: oauthLinking } = useLinkWithOAuth();
   const { connectWallet } = useConnectWallet();
+  const { toast } = useToast();
 
   // Use linkedAccounts array as the source of truth — more reliable than user.google/twitter shorthand
   const hasGoogle = user?.linkedAccounts?.some((a) => a.type === "google_oauth") ?? false;
@@ -102,21 +105,46 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const googleAccount = user?.linkedAccounts?.find((a) => a.type === "google_oauth") as { email?: string } | undefined;
   const twitterAccount = user?.linkedAccounts?.find((a) => a.type === "twitter_oauth") as { username?: string } | undefined;
 
+  const socialMethodCount = [hasGoogle, hasTwitter].filter(Boolean).length;
+
+  // After login: if user only has 1 social method, open the profile panel so they can link the other right away
+  useEffect(() => {
+    if (authenticated && ready && socialMethodCount < 2) {
+      const timer = setTimeout(() => setProfileOpen(true), 600);
+      return () => clearTimeout(timer);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authenticated]);
+
   async function handleLinkGoogle() {
+    setLinkConflict(null);
     setLinkingGoogle(true);
     try {
       await initOAuth({ provider: "google" });
-    } catch {
+    } catch (err: unknown) {
       setLinkingGoogle(false);
+      const code = (err as { privyErrorCode?: string })?.privyErrorCode;
+      if (code === "failed_to_link_account") {
+        setLinkConflict("google");
+      } else {
+        toast({ title: "Could not link Google", description: "Please try again.", variant: "destructive" });
+      }
     }
   }
 
   async function handleLinkTwitter() {
+    setLinkConflict(null);
     setLinkingTwitter(true);
     try {
       await initOAuth({ provider: "twitter" });
-    } catch {
+    } catch (err: unknown) {
       setLinkingTwitter(false);
+      const code = (err as { privyErrorCode?: string })?.privyErrorCode;
+      if (code === "failed_to_link_account") {
+        setLinkConflict("twitter");
+      } else {
+        toast({ title: "Could not link X", description: "Please try again.", variant: "destructive" });
+      }
     }
   }
 
@@ -310,8 +338,25 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <div className="p-5 border-b border-border">
                 <p className="text-xs text-muted-foreground font-medium mb-1">Connected accounts</p>
                 <p className="text-[10px] text-muted-foreground/60 mb-3">
-                  Link additional sign-in methods so any of them log you into this profile.
+                  Link sign-in methods so any of them log you into this profile.
                 </p>
+
+                {linkConflict && (
+                  <div className="flex gap-2 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 mb-3">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-[11px] font-medium text-amber-300 mb-0.5">
+                        {linkConflict === "google" ? "Google" : "X"} already used by another account
+                      </p>
+                      <p className="text-[10px] text-amber-300/70 leading-relaxed">
+                        Sign out, sign back in with{" "}
+                        <strong>{linkConflict === "google" ? "Google" : "X"}</strong>, then link{" "}
+                        {linkConflict === "google" ? "X" : "Google"} from there. That will become your primary account.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="divide-y divide-border/50">
                   <LinkedAccountRow
                     icon={<GoogleIcon />}

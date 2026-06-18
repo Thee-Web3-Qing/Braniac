@@ -55,8 +55,8 @@ function App() {
         appearance: {
           theme: "dark",
           accentColor: "#6366f1",
-          logo: "",
           showWalletLoginFirst: false,
+          walletChainType: "ethereum-and-solana",
         },
         embeddedWallets: {
           createOnLogin: "users-without-wallets",
