@@ -210,7 +210,7 @@ export default function DashboardPage() {
           { label: "New signals",  value: "12", sub: "last 24h",  icon: <Zap size={14} className="text-cyan-400" />,          color: "text-cyan-400" },
           { label: "Communities", value: "4",  sub: "connected", icon: <MessageSquare size={14} className="text-primary" />,   color: "text-primary" },
           { label: "Wallets",     value: "2",  sub: "tracked",   icon: <Wallet size={14} className="text-purple-400" />,       color: "text-purple-400" },
-          { label: "Drafts",      value: "8",  sub: "ready",     icon: <TrendingUp size={14} className="text-green-400" />,    color: "text-green-400" },
+          { label: "Alerts",      value: "8",  sub: "unread",    icon: <TrendingUp size={14} className="text-green-400" />,    color: "text-green-400" },
         ].map((s) => (
           <div
             key={s.label}
@@ -268,11 +268,11 @@ export default function DashboardPage() {
           </div>
 
           <div className="bg-card rounded-2xl border border-border p-4">
-            <h2 className="font-display font-semibold text-foreground text-sm mb-1.5">Quick Draft</h2>
-            <p className="text-muted-foreground text-xs mb-3 leading-relaxed">Let AI turn today's feed into a thread or Space recap.</p>
+            <h2 className="font-display font-semibold text-foreground text-sm mb-1.5">Create from feed</h2>
+            <p className="text-muted-foreground text-xs mb-3 leading-relaxed">Turn today's signals into a thread, recap, or alpha brief when you're ready to share.</p>
             <Link href="/brain">
               <button data-testid="button-open-brain" className="block w-full text-center bg-primary/10 hover:bg-primary/20 border border-primary/20 hover:border-primary/40 text-primary text-sm font-medium py-2.5 rounded-xl transition-all">
-                Open Brain →
+                Create →
               </button>
             </Link>
           </div>

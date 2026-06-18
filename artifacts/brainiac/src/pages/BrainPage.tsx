@@ -393,8 +393,8 @@ export default function BrainPage() {
     <div className="p-4 md:p-6 max-w-4xl mx-auto animate-fade-in">
       {/* Header */}
       <div className="mb-5 md:mb-6">
-        <h1 className="font-display font-bold text-foreground text-xl md:text-2xl">Content Brain</h1>
-        <p className="text-muted-foreground text-sm mt-0.5">Turn your feed into content and strategy</p>
+        <h1 className="font-display font-bold text-foreground text-xl md:text-2xl">Create</h1>
+        <p className="text-muted-foreground text-sm mt-0.5">Turn what you've been tracking into content, when you're ready to share it</p>
       </div>
 
       {/* Top tab switcher */}

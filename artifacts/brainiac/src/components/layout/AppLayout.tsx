@@ -11,7 +11,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/feed",      label: "Feed",       icon: Zap },
   { href: "/wallet",   label: "Wallets",     icon: Wallet },
-  { href: "/brain",    label: "Brain",       icon: MessageSquare },
+  { href: "/brain",    label: "Create",      icon: MessageSquare },
 ];
 
 function getInitials(name?: string, email?: string): string {

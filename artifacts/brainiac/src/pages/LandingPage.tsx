@@ -55,7 +55,7 @@ export default function LandingPage() {
           </h1>
 
           <p className="text-base md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8 md:mb-10 leading-relaxed px-2 md:px-0">
-            Brainiac pulls signal from your Discord servers and Telegram groups, remembers your on-chain activity, and helps you create content. All in one AI-powered dashboard.
+            Brainiac monitors everything you're plugged into — Discord servers, Telegram groups, and wallets — and surfaces what actually matters. Catch up in seconds, not hours.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 md:gap-4">
@@ -125,7 +125,7 @@ export default function LandingPage() {
             {[
               { icon: <Zap className="w-5 h-5 text-cyan-400" />, bg: "bg-cyan-500/8 border-cyan-500/15", title: "Feed Intelligence", desc: "Connect your Discord servers and Telegram groups. We filter the noise and surface the alpha you actually care about." },
               { icon: <Wallet className="w-5 h-5 text-primary" />, bg: "bg-primary/8 border-primary/15", title: "Wallet Memory", desc: "Track your wallets across chains. We remember your positions so you stop checking block explorers every hour." },
-              { icon: <MessageSquare className="w-5 h-5 text-purple-400" />, bg: "bg-purple-500/8 border-purple-500/15", title: "Content Brain", desc: "Generate threads, recaps, and updates using your personal feed history as context. Not generic AI slop." },
+              { icon: <MessageSquare className="w-5 h-5 text-purple-400" />, bg: "bg-purple-500/8 border-purple-500/15", title: "Create from feed", desc: "When you want to share what you've been tracking, turn your feed into threads, recaps, or alpha briefs. Your context, your voice." },
             ].map((f) => (
               <div key={f.title} className="p-5 md:p-6 rounded-2xl bg-card border border-border">
                 <div className={`w-9 h-9 md:w-10 md:h-10 rounded-xl border ${f.bg} flex items-center justify-center mb-4`}>
