@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useEffect } from "react";
 import { PrivyProvider } from "@privy-io/react-auth";
+import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/LandingPage";
 import DashboardPage from "@/pages/DashboardPage";
@@ -17,6 +18,8 @@ const queryClient = new QueryClient();
 const PRIVY_APP_ID =
   (import.meta.env.VITE_PRIVY_APP_ID as string | undefined) ||
   "cmqird7xu001q0clehy0nua8b";
+
+const solanaConnectors = toSolanaWalletConnectors({ shouldAutoConnect: true });
 
 function Router() {
   return (
@@ -59,7 +62,7 @@ function App() {
           createOnLogin: "users-without-wallets",
         },
         externalWallets: {
-          solana: { connectors: [] as [] },
+          solana: { connectors: solanaConnectors },
         },
       }}
     >
