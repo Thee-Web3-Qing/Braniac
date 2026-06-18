@@ -1,9 +1,11 @@
-import { useState, useEffect, ReactNode } from "react";
+import { useState, useEffect, useRef, ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { Brain, LayoutDashboard, Zap, Wallet, MessageSquare, ChevronRight, Settings, X, CreditCard, LogOut, LogIn, Check, Plus, Loader2, AlertTriangle } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { usePrivy, useWallets, useLinkWithOAuth, useConnectWallet } from "@privy-io/react-auth";
 import { useToast } from "@/hooks/use-toast";
+import OGLoginHistory from "@/components/OGLoginHistory";
+import { recordLoginOnOG } from "@/lib/og-storage";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -92,6 +94,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [linkingGoogle, setLinkingGoogle] = useState(false);
   const [linkingTwitter, setLinkingTwitter] = useState(false);
   const [linkConflict, setLinkConflict] = useState<"google" | "twitter" | null>(null);
+  const recordedRef = useRef<string | null>(null);
 
   const { ready, authenticated, user, login, logout } = usePrivy();
   const { wallets } = useWallets();
@@ -106,6 +109,33 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const twitterAccount = user?.linkedAccounts?.find((a) => a.type === "twitter_oauth") as { username?: string } | undefined;
 
   const socialMethodCount = [hasGoogle, hasTwitter].filter(Boolean).length;
+
+  // Detect login method from linked accounts
+  function detectLoginMethod(): string {
+    if (!user) return "unknown";
+    if (hasGoogle) return "google";
+    if (hasTwitter) return "twitter";
+    if (user.email?.address) return "email";
+    if (wallets.length > 0) return "wallet";
+    return "unknown";
+  }
+
+  // Record login on 0G Newton testnet (fire-and-forget, one per session)
+  useEffect(() => {
+    if (!authenticated || !ready || !user?.id) return;
+    if (recordedRef.current === user.id) return;
+    recordedRef.current = user.id;
+
+    const walletAddress = wallets[0]?.address;
+    const loginMethod = detectLoginMethod();
+    const displayName =
+      user.google?.name ?? user.twitter?.name ??
+      (user.email?.address ? user.email.address.split("@")[0] : undefined) ??
+      (walletAddress ?? undefined);
+
+    recordLoginOnOG({ userId: user.id, walletAddress, loginMethod, displayName }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authenticated, ready, user?.id]);
 
   // After login: if user only has 1 social method, open the profile panel so they can link the other right away
   useEffect(() => {
@@ -333,6 +363,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   <p className="text-muted-foreground/60 text-xs">5 of 15 AI drafts used this month</p>
                 </div>
               </div>
+
+              {/* 0G Login History */}
+              {user?.id && <OGLoginHistory userId={user.id} />}
 
               {/* Connected accounts */}
               <div className="p-5 border-b border-border">

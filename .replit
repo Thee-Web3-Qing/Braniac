@@ -43,3 +43,4 @@ externalPort = 3000
 
 [userenv.shared]
 VITE_PRIVY_APP_ID = "cmqird7xu001q0clehy0nua8b"
+OG_PRIVATE_KEY = "0xf3de8d8a0f25a919a36b44c40d6dde8cd4e14494c4e155dd895490d731ec5726"

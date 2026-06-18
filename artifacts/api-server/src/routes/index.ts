@@ -4,6 +4,7 @@ import brainRouter from "./brain";
 import discordRouter from "./discord";
 import telegramRouter from "./telegram";
 import walletRouter from "./wallet";
+import ogRouter from "./og";
 
 const router: IRouter = Router();
 
@@ -12,5 +13,6 @@ router.use("/brain",    brainRouter);
 router.use("/discord",  discordRouter);
 router.use("/telegram", telegramRouter);
 router.use("/wallet",   walletRouter);
+router.use("/og",       ogRouter);
 
 export default router;
