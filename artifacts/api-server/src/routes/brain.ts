@@ -88,11 +88,12 @@ Write the full piece now.`;
 });
 
 router.post("/briefing", async (req, res) => {
-  const { query, timeRange, wallets, communities } = req.body as {
+  const { query, timeRange, wallets, communities, feedContext } = req.body as {
     query?: string;
     timeRange?: string;
     wallets?: Array<{ label: string; address: string; chain: string }>;
     communities?: Array<{ name: string; source: string }>;
+    feedContext?: string;
   };
 
   const apiKey = process.env.QWEN_API_KEY;
@@ -111,7 +112,7 @@ router.post("/briefing", async (req, res) => {
     ? communities.map((c) => `- ${c.name} on ${c.source}`).join("\n")
     : "No communities connected yet.";
 
-  const feedSignals = `
+  const feedSignals = feedContext?.trim() || `
 - New DEX launching on Base tomorrow - $200K liquidity incentives, early LPs get 3x boost
 - Whale wallet 0x7f3a moved 500 ETH to Binance (possible sell pressure signal)
 - LayerZero airdrop snapshot confirmed - requires 5+ cross-chain txs, deadline end of June

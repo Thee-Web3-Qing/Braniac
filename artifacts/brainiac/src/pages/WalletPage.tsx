@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Plus, ExternalLink, TrendingUp, TrendingDown, X, Copy, Check, Pencil, ArrowUpDown, Layers, Cpu, RefreshCw, Database, Loader2 } from "lucide-react";
+import { useWallets } from "@privy-io/react-auth";
 import { getWalletActivity, activityToText, getActiveProtocols, getTotalYield } from "../lib/wallet-activity";
 import { saveToOG, formatCID, OG_EXPLORER, type OGRecord } from "../lib/og-storage";
 
@@ -534,11 +535,29 @@ const INNER_TABS = [
 type InnerTab = typeof INNER_TABS[number]["id"];
 
 export default function WalletPage() {
+  const { wallets: privyWallets } = useWallets();
+  const privySeeded = useRef(false);
   const [wallets, setWallets]           = useState<Wallet[]>(initialWallets);
   const [activeWalletId, setActiveWalletId] = useState(initialWallets[0].id);
   const [innerTab, setInnerTab]         = useState<InnerTab>("overview");
   const [renamingId, setRenamingId]     = useState<number | null>(null);
   const [showModal, setShowModal]       = useState(false);
+
+  // Seed wallet list from Privy connected wallets (fires once when wallets load)
+  useEffect(() => {
+    if (privySeeded.current || privyWallets.length === 0) return;
+    privySeeded.current = true;
+    const seeds: Wallet[] = privyWallets.map((w, i) => ({
+      id: i + 1,
+      address: w.address,
+      label: w.chainType === "solana" ? "My Solana Wallet" : "My Wallet",
+      chain: w.chainType === "solana" ? "Solana" : "Ethereum",
+      pnl: "",
+      positive: true,
+    }));
+    setWallets(seeds);
+    setActiveWalletId(seeds[0].id);
+  }, [privyWallets]);
 
   const wallet = wallets.find((w) => w.id === activeWalletId)!;
 

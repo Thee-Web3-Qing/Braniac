@@ -1,6 +1,7 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
 import { Zap, Wallet, MessageSquare, TrendingUp, ArrowRight, Plus, Bell, TrendingDown, Sparkles, RefreshCw, ChevronDown } from "lucide-react";
+import { useWallets } from "@privy-io/react-auth";
 
 const feedItems = [
   { id: 1, source: "Discord", server: "Bankless DAO", msg: "Alpha drop: New DEX launching on Base tomorrow with $200K liquidity incentives. Early LPs get 3x boost.", time: "2m ago", hot: true },
@@ -35,13 +36,27 @@ const TIME_RANGES = [
 ];
 
 function BriefingCard() {
+  const { wallets: privyWallets } = useWallets();
   const [timeRange, setTimeRange] = useState("7d");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [brief, setBrief] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [liveFeed, setLiveFeed] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Pull real Telegram messages for briefing context
+  useEffect(() => {
+    fetch("/api/telegram/updates?limit=30")
+      .then((r) => r.json())
+      .then((d: { messages?: Array<{ text: string; chatTitle?: string }> }) => {
+        if (d.messages?.length) {
+          setLiveFeed(d.messages.map((m) => `[${m.chatTitle ?? "Telegram"}] ${m.text}`));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const ask = async (overrideQuery?: string) => {
     const q = overrideQuery ?? query;
@@ -49,11 +64,23 @@ function BriefingCard() {
     setError(null);
     setLoading(true);
     setCollapsed(false);
+
+    // Use real Privy wallets if connected, otherwise fall back to demo
+    const realWallets = privyWallets.length > 0
+      ? privyWallets.map((w, i) => ({
+          label: i === 0 ? "My Wallet" : `Wallet ${i + 1}`,
+          address: w.address,
+          chain: w.chainType === "solana" ? "Solana" : "Ethereum",
+        }))
+      : wallets;
+
+    const feedContext = liveFeed.length > 0 ? liveFeed.slice(0, 20).join("\n") : undefined;
+
     try {
       const res = await fetch("/api/brain/briefing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: q, timeRange, wallets, communities }),
+        body: JSON.stringify({ query: q, timeRange, wallets: realWallets, communities, feedContext }),
       });
       const data = await res.json() as { brief?: string; error?: string };
       if (!res.ok || data.error) throw new Error(data.error);
