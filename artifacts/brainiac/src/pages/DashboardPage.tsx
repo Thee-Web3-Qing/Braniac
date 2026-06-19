@@ -1,26 +1,47 @@
 import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
-import { Zap, Wallet, MessageSquare, TrendingUp, ArrowRight, Plus, Bell, TrendingDown, Sparkles, RefreshCw, ChevronDown } from "lucide-react";
-import { useWallets } from "@privy-io/react-auth";
+import { Zap, Wallet, MessageSquare, TrendingUp, ArrowRight, Plus, Bell, Sparkles, RefreshCw, ChevronDown, Loader2 } from "lucide-react";
+import { useWallets, usePrivy } from "@privy-io/react-auth";
 
-const feedItems = [
-  { id: 1, source: "Discord", server: "Bankless DAO", msg: "Alpha drop: New DEX launching on Base tomorrow with $200K liquidity incentives. Early LPs get 3x boost.", time: "2m ago", hot: true },
-  { id: 2, source: "Telegram", server: "Crypto Signals", msg: "Whale wallet 0x7f3a moved 500 ETH to Binance 20 mins ago. Keep watch on price action.", time: "11m ago", hot: true },
-  { id: 3, source: "Discord", server: "Base Builders", msg: "Community vote results: Proposal #14 passed with 78% approval. Treasury allocation confirmed.", time: "34m ago", hot: false },
-  { id: 4, source: "Telegram", server: "NFT Alpha", msg: "Floor on Pudgy Penguins up 12% in the last hour. Volume spike on Blur.", time: "1h ago", hot: false },
-];
+type LiveFeedItem = { id: string; source: "Discord" | "Telegram"; server: string; msg: string; time: string; hot: boolean };
 
-const wallets = [
-  { address: "0x7f3a...9e2b", label: "Main Wallet", chain: "Ethereum", projects: 14, pnl: "+$2,340", positive: true },
-  { address: "0xc91d...4f7a", label: "Trading Wallet", chain: "Base", projects: 7, pnl: "-$180", positive: false },
-];
+function isHotMsg(t: string): boolean {
+  const s = t.toLowerCase();
+  return s.includes("whale") || s.includes("urgent") || s.includes("breaking") || s.includes("airdrop");
+}
 
-const communities = [
-  { name: "Bankless DAO", source: "Discord" },
-  { name: "Crypto Signals", source: "Telegram" },
-  { name: "Base Builders", source: "Discord" },
-  { name: "NFT Alpha", source: "Telegram" },
-];
+function msgTimeAgo(iso: string): string {
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+function useLiveFeed() {
+  const [items, setItems] = useState<LiveFeedItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/telegram/updates?limit=8")
+      .then((r) => r.json())
+      .then((d: { messages?: Array<{ text: string; chatTitle?: string; date?: string }> }) => {
+        if (!alive) return;
+        setItems((d.messages ?? []).filter((m) => m.text?.trim()).map((m, i) => ({
+          id: String(i),
+          source: "Telegram" as const,
+          server: m.chatTitle ?? "Telegram",
+          msg: m.text,
+          time: m.date ? msgTimeAgo(m.date) : "recently",
+          hot: isHotMsg(m.text),
+        })));
+      })
+      .catch(() => {})
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, []);
+  return { items, loading };
+}
 
 const QUICK_PROMPTS = [
   "What did I miss this week?",
@@ -65,14 +86,14 @@ function BriefingCard() {
     setLoading(true);
     setCollapsed(false);
 
-    // Use real Privy wallets if connected, otherwise fall back to demo
-    const realWallets = privyWallets.length > 0
-      ? privyWallets.map((w, i) => ({
-          label: i === 0 ? "My Wallet" : `Wallet ${i + 1}`,
-          address: w.address,
-          chain: w.chainType === "solana" ? "Solana" : "Ethereum",
-        }))
-      : wallets;
+    const realWallets = privyWallets.map((w, i) => ({
+      label: i === 0 ? "My Wallet" : `Wallet ${i + 1}`,
+      address: w.address,
+      chain: w.chainType === "solana" ? "Solana" : "Ethereum",
+    }));
+
+    let connCommunities: Array<{ name: string; source: string }> = [];
+    try { connCommunities = (JSON.parse(localStorage.getItem("brainiac:tg_chats") ?? "[]") as Array<{ title?: string }>).map((c) => ({ name: c.title ?? "Telegram", source: "Telegram" })); } catch {}
 
     const feedContext = liveFeed.length > 0 ? liveFeed.slice(0, 20).join("\n") : undefined;
 
@@ -80,7 +101,7 @@ function BriefingCard() {
       const res = await fetch("/api/brain/briefing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: q, timeRange, wallets: realWallets, communities, feedContext }),
+        body: JSON.stringify({ query: q, timeRange, wallets: realWallets, communities: connCommunities, feedContext }),
       });
       const data = await res.json() as { brief?: string; error?: string };
       if (!res.ok || data.error) throw new Error(data.error);
@@ -194,12 +215,22 @@ function BriefingCard() {
 }
 
 export default function DashboardPage() {
+  const { wallets: privyWallets } = useWallets();
+  const { user } = usePrivy();
+  const { items: feedItems, loading: feedLoading } = useLiveFeed();
   const [greeting] = useState(() => {
     const h = new Date().getHours();
     if (h < 12) return "Good morning";
     if (h < 17) return "Good afternoon";
     return "Good evening";
   });
+
+  const communityCount = (() => {
+    let n = 0;
+    try { n += (JSON.parse(localStorage.getItem("brainiac:tg_chats") ?? "[]") as unknown[]).length; } catch {}
+    try { if ((JSON.parse(localStorage.getItem("brainiac:discord_channels") ?? "[]") as unknown[]).length > 0) n += 1; } catch {}
+    return n;
+  })();
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto animate-fade-in">
@@ -234,10 +265,10 @@ export default function DashboardPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-6 md:mb-8">
         {[
-          { label: "New signals",  value: "12", sub: "last 24h",  icon: <Zap size={14} className="text-cyan-400" />,          color: "text-cyan-400" },
-          { label: "Communities", value: "4",  sub: "connected", icon: <MessageSquare size={14} className="text-primary" />,   color: "text-primary" },
-          { label: "Wallets",     value: "2",  sub: "tracked",   icon: <Wallet size={14} className="text-purple-400" />,       color: "text-purple-400" },
-          { label: "Alerts",      value: "8",  sub: "unread",    icon: <TrendingUp size={14} className="text-green-400" />,    color: "text-green-400" },
+          { label: "Signals",     value: feedLoading ? "..." : String(feedItems.length), sub: "from feed",    icon: <Zap size={14} className="text-cyan-400" />,        color: "text-cyan-400" },
+          { label: "Communities", value: String(communityCount),                          sub: "connected",   icon: <MessageSquare size={14} className="text-primary" />, color: "text-primary" },
+          { label: "Wallets",     value: String(privyWallets.length),                     sub: "tracked",     icon: <Wallet size={14} className="text-purple-400" />,     color: "text-purple-400" },
+          { label: "On-chain",    value: user ? "Active" : "—",                           sub: "0G recording",icon: <TrendingUp size={14} className="text-green-400" />,  color: "text-green-400" },
         ].map((s) => (
           <div
             key={s.label}
@@ -270,19 +301,17 @@ export default function DashboardPage() {
               </Link>
             </div>
             <div className="p-3 space-y-2">
-              {wallets.map((w) => (
+              {privyWallets.length === 0 && (
+                <p className="text-muted-foreground/50 text-xs text-center py-3">No wallets connected yet.</p>
+              )}
+              {privyWallets.map((w, i) => (
                 <div key={w.address} data-testid={`card-wallet-${w.address}`} className="bg-background rounded-xl p-3">
                   <div className="flex items-start justify-between mb-1">
-                    <p className="text-foreground text-xs font-medium">{w.label}</p>
-                    <span className={`text-xs font-medium flex items-center gap-1 shrink-0 ml-2 ${w.positive ? "text-green-400" : "text-red-400"}`}>
-                      {w.positive ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-                      {w.pnl}
-                    </span>
+                    <p className="text-foreground text-xs font-medium">{i === 0 ? "My Wallet" : `Wallet ${i + 1}`}</p>
                   </div>
-                  <p className="text-muted-foreground/50 text-xs font-mono">{w.address}</p>
+                  <p className="text-muted-foreground/50 text-xs font-mono">{w.address.slice(0, 6)}...{w.address.slice(-4)}</p>
                   <div className="flex items-center gap-2 mt-1.5">
-                    <span className="text-xs text-muted-foreground bg-card px-1.5 py-0.5 rounded border border-border">{w.chain}</span>
-                    <span className="text-xs text-muted-foreground/60">{w.projects} projects</span>
+                    <span className="text-xs text-muted-foreground bg-card px-1.5 py-0.5 rounded border border-border">{w.chainType === "solana" ? "Solana" : "Ethereum"}</span>
                   </div>
                 </div>
               ))}
@@ -320,7 +349,24 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="divide-y divide-border">
-            {feedItems.map((item, idx) => (
+            {feedLoading && (
+              <div className="flex items-center justify-center py-10 gap-2 text-muted-foreground text-sm">
+                <Loader2 size={14} className="animate-spin" /> Loading feed...
+              </div>
+            )}
+            {!feedLoading && feedItems.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-10 px-5 text-center gap-3">
+                <MessageSquare size={22} className="text-muted-foreground/20" />
+                <p className="text-muted-foreground text-sm">No signals yet.</p>
+                <p className="text-muted-foreground/50 text-xs leading-relaxed">Connect Discord or Telegram to start seeing messages here.</p>
+                <Link href="/feed">
+                  <button className="text-xs border border-border text-muted-foreground hover:border-primary/30 hover:text-foreground px-3 py-1.5 rounded-lg transition-colors mt-1">
+                    Connect a source
+                  </button>
+                </Link>
+              </div>
+            )}
+            {!feedLoading && feedItems.map((item, idx) => (
               <div
                 key={item.id}
                 data-testid={`card-feed-${item.id}`}
@@ -340,11 +386,13 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
-          <div className="md:hidden px-4 py-3 border-t border-border">
-            <Link href="/feed" className="text-primary text-xs flex items-center gap-1 hover:text-primary/80 transition-colors">
-              See all signals <ArrowRight size={11} />
-            </Link>
-          </div>
+          {feedItems.length > 2 && (
+            <div className="md:hidden px-4 py-3 border-t border-border">
+              <Link href="/feed" className="text-primary text-xs flex items-center gap-1 hover:text-primary/80 transition-colors">
+                See all signals <ArrowRight size={11} />
+              </Link>
+            </div>
+          )}
         </div>
       </div>
     </div>

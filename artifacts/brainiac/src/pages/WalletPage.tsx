@@ -32,10 +32,7 @@ type AlchemyTx = {
   block: number;
 };
 
-const initialWallets: Wallet[] = [
-  { id: 1, address: "0x7f3a9c8d2e1b4f56789ab0c3d4e5f6789e2b", label: "Main Wallet",    chain: "Ethereum", pnl: "+$2,340", positive: true },
-  { id: 2, address: "0xc91d4b7a2e9f3c8d1b5e6f7a8b9c0d1e4f7a", label: "Trading Wallet", chain: "Base",     pnl: "-$180",   positive: false },
-];
+const initialWallets: Wallet[] = [];
 
 const CHAINS = ["Ethereum", "Base", "Arbitrum", "Solana", "Polygon"];
 const short = (addr: string) => addr.slice(0, 6) + "..." + addr.slice(-4);

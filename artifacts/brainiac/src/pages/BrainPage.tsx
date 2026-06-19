@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Wand2, Copy, Check, RefreshCw, ChevronDown, FileText, MessageSquare, Mic, Twitter, Users, TrendingUp, Clock, BarChart3, Cpu, Zap, Send, Bot, User, History, Trash2, Plus } from "lucide-react";
+import { Wand2, Copy, Check, RefreshCw, ChevronDown, FileText, MessageSquare, Mic, Twitter, TrendingUp, Zap, Send, Bot, User, History, Trash2, Plus, Users } from "lucide-react";
 import { useGenerateDraft } from "@workspace/api-client-react";
 import { useWallets, usePrivy } from "@privy-io/react-auth";
 import { ExternalLink } from "lucide-react";
@@ -103,12 +103,6 @@ const DRAFT_TYPES = [
   { id: "brief",   label: "Alpha Brief",      icon: FileText,      desc: "Curated alpha report from your feed" },
 ];
 
-const recentDrafts = [
-  { id: 1, type: "X Thread",    title: "Alpha thread — June 17",         preview: "Biggest signals from Web3 this week that most people missed...", created: "2h ago" },
-  { id: 2, type: "Space Recap", title: "Recap: DeFi 2025 with Bankless", preview: "Yesterday's Space with @bankless covered 3 key narratives shaping DeFi this summer...", created: "1d ago" },
-  { id: 3, type: "Alpha Brief", title: "Weekly Alpha Brief #12",         preview: "This week: Base DEX launch, LayerZero snapshot, and whale moves to watch...", created: "3d ago" },
-];
-
 const COMMUNITY_QUESTIONS = [
   "When should I post for maximum engagement?",
   "What topics are my members most interested in?",
@@ -118,27 +112,22 @@ const COMMUNITY_QUESTIONS = [
   "Build me a 30-day content calendar",
 ];
 
-const connectedCommunities = [
-  { name: "Bankless DAO",    source: "Discord" },
-  { name: "Crypto Signals",  source: "Telegram" },
-  { name: "Base Builders",   source: "Discord" },
-  { name: "NFT Alpha",       source: "Telegram" },
-];
-
-const TOPIC_DATA = [
-  { label: "DeFi yields",   pct: 34, color: "bg-primary" },
-  { label: "NFT launches",  pct: 22, color: "bg-purple-500" },
-  { label: "Price action",  pct: 18, color: "bg-yellow-500" },
-  { label: "Protocol news", pct: 15, color: "bg-cyan-500" },
-  { label: "Governance",    pct: 11, color: "bg-green-500" },
-];
-
-const PEAK_HOURS = [
-  { hour: "6am",  level: 1 }, { hour: "8am",  level: 2 }, { hour: "10am", level: 3 },
-  { hour: "12pm", level: 3 }, { hour: "2pm",  level: 5 }, { hour: "4pm",  level: 5 },
-  { hour: "6pm",  level: 4 }, { hour: "8pm",  level: 5 }, { hour: "10pm", level: 4 },
-  { hour: "12am", level: 2 }, { hour: "2am",  level: 1 }, { hour: "4am",  level: 1 },
-];
+function useConnectedCommunities(): Array<{ name: string; source: "Discord" | "Telegram" }> {
+  const result: Array<{ name: string; source: "Discord" | "Telegram" }> = [];
+  try {
+    const tg = JSON.parse(localStorage.getItem("brainiac:tg_chats") ?? "[]") as Array<{ id: string; title: string }>;
+    for (const c of tg) result.push({ name: c.title, source: "Telegram" });
+  } catch {}
+  try {
+    const dc = JSON.parse(localStorage.getItem("brainiac:discord_channels") ?? "[]") as Array<{ channelName: string; guildName: string }>;
+    const seen = new Set<string>();
+    for (const c of dc) {
+      const name = c.guildName ?? c.channelName;
+      if (!seen.has(name)) { seen.add(name); result.push({ name, source: "Discord" }); }
+    }
+  } catch {}
+  return result;
+}
 
 function CopyBtn({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -157,6 +146,13 @@ function ContentBrain() {
   const [histSessions, setHistSessions] = useState<ContentHistorySession[]>(() => loadHist<ContentHistorySession>(HIST_KEY.content));
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState(DRAFT_TYPES[0]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    loadHist<ContentHistorySession>(HIST_KEY.content)
+      .filter((s) => !s.ogStatus)
+      .forEach((s) => ogSaveHistory(HIST_KEY.content, s, user.id, "content", s.topic ?? "", setHistSessions));
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [prompt, setPrompt] = useState("");
   const [draft, setDraft] = useState<string | null>(null);
   const [showTypeMenu, setShowTypeMenu] = useState(false);
@@ -330,19 +326,26 @@ function ContentBrain() {
       {/* Recent drafts sidebar */}
       <div>
         <h2 className="font-display font-semibold text-foreground text-sm mb-3">Recent drafts</h2>
-        <div className="space-y-2">
-          {recentDrafts.map((d) => (
-            <div key={d.id} data-testid={`card-draft-${d.id}`}
-              className="bg-card border border-border hover:border-border/80 rounded-xl p-3.5 cursor-pointer transition-all">
-              <div className="flex items-center gap-2 mb-1.5">
-                <span className="text-xs text-primary bg-primary/10 px-1.5 py-0.5 rounded">{d.type}</span>
-                <span className="text-muted-foreground/50 text-xs ml-auto shrink-0">{d.created}</span>
+        {histSessions.length === 0 ? (
+          <div className="bg-card border border-border rounded-xl p-4 text-center">
+            <p className="text-muted-foreground text-xs leading-relaxed">Your drafts will appear here after you create your first one.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {histSessions.slice(0, 4).map((d) => (
+              <div key={d.id} data-testid={`card-draft-${d.id}`}
+                className="bg-card border border-border hover:border-border/80 rounded-xl p-3.5 cursor-pointer transition-all"
+                onClick={() => { setView("history"); setExpandedId(d.id); }}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-xs text-primary bg-primary/10 px-1.5 py-0.5 rounded">{d.typeLabel}</span>
+                  <span className="text-muted-foreground/50 text-xs ml-auto shrink-0">{timeAgo(d.ts)}</span>
+                </div>
+                <p className="text-foreground text-xs font-medium mb-1 leading-snug">{d.topic}</p>
+                <p className="text-muted-foreground text-xs leading-relaxed line-clamp-2">{d.draft}</p>
               </div>
-              <p className="text-foreground text-xs font-medium mb-1 leading-snug">{d.title}</p>
-              <p className="text-muted-foreground text-xs leading-relaxed line-clamp-2">{d.preview}</p>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
         <div className="mt-4 bg-primary/5 border border-primary/15 rounded-xl p-4">
           <p className="text-primary text-xs font-medium mb-1.5">Sharper drafts</p>
           <p className="text-muted-foreground text-xs leading-relaxed">
@@ -358,6 +361,14 @@ function CommunityIntel() {
   const { user } = usePrivy();
   const [view, setView] = useState<"active" | "history">("active");
   const [histSessions, setHistSessions] = useState<CommunityHistorySession[]>(() => loadHist<CommunityHistorySession>(HIST_KEY.community));
+  const connectedCommunities = useConnectedCommunities();
+
+  useEffect(() => {
+    if (!user?.id) return;
+    loadHist<CommunityHistorySession>(HIST_KEY.community)
+      .filter((s) => !s.ogStatus)
+      .forEach((s) => ogSaveHistory(HIST_KEY.community, s, user.id, "community", s.question ?? "", setHistSessions));
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -428,65 +439,8 @@ function CommunityIntel() {
 
   return (
     <div className="grid md:grid-cols-3 gap-4 md:gap-5">
-      {/* Left: metrics + Q&A */}
+      {/* Left: Q&A */}
       <div className="md:col-span-2 space-y-4">
-
-        {/* Metric cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-          {[
-            { icon: Users,      label: "Active members",   value: "23%",     sub: "post weekly",        color: "text-primary" },
-            { icon: Clock,      label: "Peak window",      value: "2-6PM",   sub: "UTC weekdays",       color: "text-cyan-400" },
-            { icon: TrendingUp, label: "Member growth",    value: "+23%",    sub: "last 30 days",       color: "text-green-400" },
-            { icon: Zap,        label: "Avg messages/day", value: "847",     sub: "peaks at 2,100+",    color: "text-yellow-400" },
-            { icon: BarChart3,  label: "Top channel",      value: "#alpha",  sub: "+34% this week",     color: "text-purple-400" },
-            { icon: Cpu,        label: "At-risk members",  value: "41%",     sub: "silent 14+ days",    color: "text-red-400" },
-          ].map((m) => {
-            const Icon = m.icon;
-            return (
-              <div key={m.label} className="bg-card border border-border rounded-xl p-3">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <Icon size={13} className={m.color} />
-                  <span className="text-muted-foreground text-xs truncate">{m.label}</span>
-                </div>
-                <p className={`font-display font-bold text-lg ${m.color}`}>{m.value}</p>
-                <p className="text-muted-foreground/60 text-xs mt-0.5">{m.sub}</p>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Topic breakdown */}
-        <div className="bg-card border border-border rounded-xl p-4">
-          <p className="text-foreground text-xs font-semibold mb-3">What your community talks about</p>
-          <div className="space-y-2.5">
-            {TOPIC_DATA.map((t) => (
-              <div key={t.label}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-muted-foreground text-xs">{t.label}</span>
-                  <span className="text-foreground text-xs font-medium">{t.pct}%</span>
-                </div>
-                <div className="h-1.5 bg-background rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full ${t.color} transition-all`} style={{ width: `${t.pct}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Activity heatmap (simplified) */}
-        <div className="bg-card border border-border rounded-xl p-4">
-          <p className="text-foreground text-xs font-semibold mb-3">Activity by time of day (UTC)</p>
-          <div className="flex items-end gap-1.5 h-12">
-            {PEAK_HOURS.map((h) => (
-              <div key={h.hour} className="flex-1 flex flex-col items-center gap-1">
-                <div className="w-full rounded-sm bg-primary/20 transition-all"
-                  style={{ height: `${(h.level / 5) * 100}%`, backgroundColor: `rgba(99,102,241,${h.level * 0.15})` }} />
-                <span className="text-muted-foreground/40 text-[9px] leading-none whitespace-nowrap hidden sm:inline">{h.hour}</span>
-              </div>
-            ))}
-          </div>
-          <p className="text-muted-foreground/50 text-xs mt-2">Best time to post: <span className="text-foreground">2PM, 4PM, 8PM UTC</span></p>
-        </div>
 
         {/* Quick questions */}
         <div>
@@ -541,37 +495,27 @@ function CommunityIntel() {
       <div className="space-y-4">
         <div className="bg-card border border-border rounded-xl p-4">
           <h3 className="font-display font-semibold text-foreground text-sm mb-3">Connected communities</h3>
-          <div className="space-y-2">
-            {connectedCommunities.map((c) => (
-              <div key={c.name} className="flex items-center gap-2.5">
-                <span className="relative flex h-1.5 w-1.5 shrink-0">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-400" />
-                </span>
-                <span className="text-foreground text-xs flex-1 truncate">{c.name}</span>
-                <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${c.source === "Discord" ? "bg-primary/10 text-primary" : "bg-cyan-500/10 text-cyan-400"}`}>
-                  {c.source}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-card border border-border rounded-xl p-4">
-          <h3 className="font-display font-semibold text-foreground text-sm mb-2">Quick wins</h3>
-          <ul className="space-y-2">
-            {[
-              "Post alpha drops between 2-4PM UTC",
-              "Re-engage the 41% silent members with a poll",
-              "DeFi content drives 34% of all engagement",
-              "#alpha-calls is your fastest growing channel",
-            ].map((tip) => (
-              <li key={tip} className="flex items-start gap-2 text-xs text-muted-foreground leading-relaxed">
-                <span className="text-primary shrink-0 mt-0.5">•</span>
-                {tip}
-              </li>
-            ))}
-          </ul>
+          {connectedCommunities.length === 0 ? (
+            <div className="text-center py-2">
+              <p className="text-muted-foreground/60 text-xs leading-relaxed mb-3">No communities connected yet. Head to the Feed page to connect Discord or Telegram.</p>
+              <a href="/feed" className="text-xs text-primary hover:text-primary/80 transition-colors">Connect now</a>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {connectedCommunities.map((c) => (
+                <div key={c.name} className="flex items-center gap-2.5">
+                  <span className="relative flex h-1.5 w-1.5 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-400" />
+                  </span>
+                  <span className="text-foreground text-xs flex-1 truncate">{c.name}</span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${c.source === "Discord" ? "bg-primary/10 text-primary" : "bg-cyan-500/10 text-cyan-400"}`}>
+                    {c.source}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -604,6 +548,16 @@ function BrainChat() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    loadHist<ChatHistorySession>(HIST_KEY.chat)
+      .filter((s) => !s.ogStatus)
+      .forEach((s) => {
+        const preview = s.messages?.find((m) => m.role === "user")?.content ?? "";
+        ogSaveHistory(HIST_KEY.chat, s, user.id, "chat", preview, setHistSessions);
+      });
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getContext = () => {
     const walletContext = wallets.length
