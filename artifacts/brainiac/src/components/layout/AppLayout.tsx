@@ -372,22 +372,46 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <div className="p-5 border-b border-border">
                 <p className="text-xs text-muted-foreground font-medium mb-1">Connected accounts</p>
                 <p className="text-[10px] text-muted-foreground/60 mb-3">
-                  Link sign-in methods so any of them log you into this profile.
+                  Link Google and X so any of them sign you into this same account. Your wallet is always connected automatically.
                 </p>
 
                 {linkConflict && (
-                  <div className="flex gap-2 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 mb-3">
-                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-[11px] font-medium text-amber-300 mb-0.5">
-                        {linkConflict === "google" ? "Google" : "X"} already used by another account
-                      </p>
-                      <p className="text-[10px] text-amber-300/70 leading-relaxed">
-                        Sign out, sign back in with{" "}
-                        <strong>{linkConflict === "google" ? "Google" : "X"}</strong>, then link{" "}
-                        {linkConflict === "google" ? "X" : "Google"} from there. That will become your primary account.
-                      </p>
+                  <div className="bg-amber-500/8 border border-amber-500/25 rounded-xl p-3.5 mb-3 space-y-3">
+                    <div className="flex gap-2">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-[11px] font-semibold text-amber-300 mb-1">
+                          {linkConflict === "google" ? "Google" : "X / Twitter"} already has its own account
+                        </p>
+                        <p className="text-[10px] text-amber-300/70 leading-relaxed">
+                          That {linkConflict === "google" ? "Google" : "X"} was used to sign in before, so Brainiac created a separate account for it. To link everything into one account, you need to switch to it and connect the rest from there.
+                        </p>
+                      </div>
                     </div>
+
+                    <div className="pl-5 space-y-1.5">
+                      {[
+                        `Sign out of this account`,
+                        `Sign back in with ${linkConflict === "google" ? "Google" : "X"}`,
+                        `In Settings, connect your wallet and link ${linkConflict === "google" ? "X" : "Google"}`,
+                      ].map((step, i) => (
+                        <div key={i} className="flex items-start gap-2">
+                          <span className="text-[10px] font-bold text-amber-400 shrink-0 mt-px">{i + 1}.</span>
+                          <span className="text-[10px] text-amber-300/80 leading-relaxed">{step}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <button
+                      onClick={async () => {
+                        setProfileOpen(false);
+                        setLinkConflict(null);
+                        await logout();
+                      }}
+                      className="w-full text-[11px] font-medium bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded-lg py-2 transition-colors"
+                    >
+                      Sign out and switch to {linkConflict === "google" ? "Google" : "X"} account
+                    </button>
                   </div>
                 )}
 
@@ -409,6 +433,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     linking={linkingTwitter || (oauthLinking && linkingTwitter)}
                   />
                 </div>
+
+                {!hasGoogle && !hasTwitter && !linkConflict && (
+                  <p className="text-[10px] text-muted-foreground/40 mt-3 leading-relaxed">
+                    Tip: link Google or X while signed in here so you never lose access to this account.
+                  </p>
+                )}
               </div>
 
               {/* Actions */}
