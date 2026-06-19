@@ -63,6 +63,73 @@ export interface AIInteractionRecord {
 
 export const aiHistory = new Map<string, AIInteractionRecord[]>();
 
+export interface HistoryRecord {
+  id: string;
+  userId: string;
+  type: "chat" | "content" | "community";
+  preview: string;
+  ts: number;
+  txHash?: string;
+  txStatus: "pending" | "confirmed" | "no_funds" | "failed";
+  explorerUrl?: string;
+}
+
+export const historyStore = new Map<string, HistoryRecord[]>();
+
+export function recordHistory(
+  userId: string,
+  type: "chat" | "content" | "community",
+  sessionId: string,
+  preview: string,
+): HistoryRecord {
+  const record: HistoryRecord = {
+    id: sessionId,
+    userId,
+    type,
+    preview: preview.slice(0, 150),
+    ts: Date.now(),
+    txStatus: "pending",
+  };
+
+  const existing = historyStore.get(userId) ?? [];
+  const updated = [record, ...existing.filter((r) => r.id !== sessionId)];
+  if (updated.length > 100) updated.splice(100);
+  historyStore.set(userId, updated);
+
+  const c = getOGChainClients();
+  if (!c) { record.txStatus = "failed"; return record; }
+
+  (async () => {
+    try {
+      const balance = await c.publicClient.getBalance({ address: c.serverAddress });
+      if (balance === 0n) {
+        record.txStatus = "no_funds";
+        return;
+      }
+      const payload = JSON.stringify({
+        app: "brainiac", v: 2, kind: "history", type, userId,
+        preview: record.preview, sessionId, ts: record.ts,
+      });
+      const hash = await c.walletClient.sendTransaction({
+        to: c.serverAddress, value: 0n, data: toHex(payload) as Hex,
+      });
+      record.txHash = hash;
+      record.txStatus = "confirmed";
+      record.explorerUrl = `${OG_EXPLORER}/tx/${hash}`;
+      const list = historyStore.get(userId) ?? [];
+      const idx = list.findIndex((r) => r.id === sessionId);
+      if (idx >= 0) list[idx] = { ...record };
+    } catch {
+      record.txStatus = "failed";
+      const list = historyStore.get(userId) ?? [];
+      const idx = list.findIndex((r) => r.id === sessionId);
+      if (idx >= 0) list[idx] = { ...record };
+    }
+  })().catch(() => {});
+
+  return record;
+}
+
 export function recordAIInteraction(
   userId: string,
   type: "chat" | "briefing",

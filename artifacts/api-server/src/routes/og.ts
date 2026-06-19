@@ -8,7 +8,7 @@ import {
   type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { aiHistory } from "../lib/og-chain";
+import { aiHistory, historyStore, recordHistory } from "../lib/og-chain";
 
 const router = Router();
 
@@ -167,6 +167,30 @@ router.get("/history/:userId", (req, res) => {
 router.get("/ai-history/:userId", (req, res) => {
   const { userId } = req.params;
   const records = aiHistory.get(decodeURIComponent(userId)) ?? [];
+  return res.json({
+    records,
+    chain: { id: 16602, name: "0G Newton Testnet", explorer: OG_EXPLORER },
+  });
+});
+
+router.post("/save-history", (req, res) => {
+  const { userId, type, sessionId, preview } = req.body as {
+    userId?: string; type?: string; sessionId?: string; preview?: string;
+  };
+  if (!userId || !type || !sessionId) {
+    return res.status(400).json({ error: "userId, type, sessionId required" });
+  }
+  const validTypes = ["chat", "content", "community"] as const;
+  if (!validTypes.includes(type as typeof validTypes[number])) {
+    return res.status(400).json({ error: "type must be chat, content, or community" });
+  }
+  const record = recordHistory(userId, type as "chat" | "content" | "community", sessionId, preview ?? "");
+  return res.json({ record, explorerUrl: record.explorerUrl ?? null });
+});
+
+router.get("/session-history/:userId", (req, res) => {
+  const { userId } = req.params;
+  const records = historyStore.get(decodeURIComponent(userId)) ?? [];
   return res.json({
     records,
     chain: { id: 16602, name: "0G Newton Testnet", explorer: OG_EXPLORER },

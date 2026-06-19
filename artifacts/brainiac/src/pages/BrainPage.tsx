@@ -4,9 +4,9 @@ import { useGenerateDraft } from "@workspace/api-client-react";
 import { useWallets, usePrivy } from "@privy-io/react-auth";
 import { ExternalLink } from "lucide-react";
 
-type ChatHistorySession = { id: string; ts: number; messages: ChatMessage[] };
-type ContentHistorySession = { id: string; ts: number; typeId: string; typeLabel: string; topic: string; draft: string };
-type CommunityHistorySession = { id: string; ts: number; question: string; insights: string };
+type ChatHistorySession = { id: string; ts: number; messages: ChatMessage[]; ogStatus?: string; ogExplorerUrl?: string };
+type ContentHistorySession = { id: string; ts: number; typeId: string; typeLabel: string; topic: string; draft: string; ogStatus?: string; ogExplorerUrl?: string };
+type CommunityHistorySession = { id: string; ts: number; question: string; insights: string; ogStatus?: string; ogExplorerUrl?: string };
 
 const HIST_KEY = { chat: "brainiac:history:chat", content: "brainiac:history:content", community: "brainiac:history:community" } as const;
 
@@ -26,6 +26,50 @@ function timeAgo(ts: number): string {
   if (d < 3_600_000) return `${Math.floor(d / 60_000)}m ago`;
   if (d < 86_400_000) return `${Math.floor(d / 3_600_000)}h ago`;
   return `${Math.floor(d / 86_400_000)}d ago`;
+}
+
+async function ogSaveHistory<T extends { id: string; ogStatus?: string; ogExplorerUrl?: string }>(
+  histKey: string,
+  session: T,
+  userId: string,
+  type: "chat" | "content" | "community",
+  preview: string,
+  onUpdate: (sessions: T[]) => void,
+) {
+  try {
+    const res = await fetch("/api/og/save-history", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, type, sessionId: session.id, preview }),
+    });
+    const data = await res.json() as { record?: { txStatus?: string; explorerUrl?: string } };
+    const updated: T = { ...session, ogStatus: data.record?.txStatus ?? "failed", ogExplorerUrl: data.record?.explorerUrl };
+    saveHist(histKey, updated);
+    onUpdate(loadHist<T>(histKey));
+  } catch {
+    const updated: T = { ...session, ogStatus: "failed" };
+    saveHist(histKey, updated);
+    onUpdate(loadHist<T>(histKey));
+  }
+}
+
+function OGBadge({ status, explorerUrl }: { status?: string; explorerUrl?: string }) {
+  if (!status) return null;
+  const confirmed = status === "confirmed";
+  const failed = status === "failed";
+  const badge = (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${
+      confirmed ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+      : failed ? "bg-red-500/10 border-red-500/20 text-red-400/60"
+      : "bg-primary/10 border-primary/20 text-primary/70"
+    }`}>
+      <span className={`w-1 h-1 rounded-full ${confirmed ? "bg-emerald-400" : failed ? "bg-red-400/60" : "bg-primary/50 animate-pulse"}`} />
+      0G {confirmed ? "saved" : failed ? "failed" : "recording..."}
+    </span>
+  );
+  return confirmed && explorerUrl
+    ? <a href={explorerUrl} target="_blank" rel="noreferrer" className="hover:opacity-80 transition-opacity">{badge}</a>
+    : badge;
 }
 
 function SectionToggle({ view, onChange, onNew }: { view: "active" | "history"; onChange: (v: "active" | "history") => void; onNew?: () => void }) {
@@ -108,6 +152,7 @@ function CopyBtn({ text }: { text: string }) {
 }
 
 function ContentBrain() {
+  const { user } = usePrivy();
   const [view, setView] = useState<"active" | "history">("active");
   const [histSessions, setHistSessions] = useState<ContentHistorySession[]>(() => loadHist<ContentHistorySession>(HIST_KEY.content));
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -132,6 +177,7 @@ function ContentBrain() {
         };
         saveHist(HIST_KEY.content, session);
         setHistSessions(loadHist<ContentHistorySession>(HIST_KEY.content));
+        if (user?.id) ogSaveHistory(HIST_KEY.content, session, user.id, "content", prompt, setHistSessions);
       },
       onError: () => { setError("Something went wrong. Try again in a moment."); setDraft(null); },
     },
@@ -162,6 +208,7 @@ function ContentBrain() {
                   onClick={() => setExpandedId(expandedId === s.id ? null : s.id)}>
                   <span className="text-xs text-primary bg-primary/10 px-1.5 py-0.5 rounded shrink-0">{s.typeLabel}</span>
                   <p className="text-foreground text-xs font-medium flex-1 truncate">{s.topic}</p>
+                  <OGBadge status={s.ogStatus} explorerUrl={s.ogExplorerUrl} />
                   <span className="text-muted-foreground/50 text-xs shrink-0">{timeAgo(s.ts)}</span>
                   <button onClick={(e) => { e.stopPropagation(); deleteHist(HIST_KEY.content, s.id); setHistSessions(loadHist<ContentHistorySession>(HIST_KEY.content)); }}
                     className="text-muted-foreground/30 hover:text-red-400 transition-colors shrink-0 ml-1">
@@ -308,6 +355,7 @@ function ContentBrain() {
 }
 
 function CommunityIntel() {
+  const { user } = usePrivy();
   const [view, setView] = useState<"active" | "history">("active");
   const [histSessions, setHistSessions] = useState<CommunityHistorySession[]>(() => loadHist<CommunityHistorySession>(HIST_KEY.community));
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -332,6 +380,7 @@ function CommunityIntel() {
         const session: CommunityHistorySession = { id: `community-${Date.now()}`, ts: Date.now(), question: q, insights: result };
         saveHist(HIST_KEY.community, session);
         setHistSessions(loadHist<CommunityHistorySession>(HIST_KEY.community));
+        if (user?.id) ogSaveHistory(HIST_KEY.community, session, user.id, "community", q, setHistSessions);
       }
     } catch {
       setError("Could not generate insights. Try again.");
@@ -357,6 +406,7 @@ function CommunityIntel() {
                   onClick={() => setExpandedId(expandedId === s.id ? null : s.id)}>
                   <Users size={12} className="text-primary shrink-0" />
                   <p className="text-foreground text-xs font-medium flex-1 truncate">{s.question}</p>
+                  <OGBadge status={s.ogStatus} explorerUrl={s.ogExplorerUrl} />
                   <span className="text-muted-foreground/50 text-xs shrink-0">{timeAgo(s.ts)}</span>
                   <button onClick={(e) => { e.stopPropagation(); deleteHist(HIST_KEY.community, s.id); setHistSessions(loadHist<CommunityHistorySession>(HIST_KEY.community)); }}
                     className="text-muted-foreground/30 hover:text-red-400 transition-colors shrink-0 ml-1">
@@ -599,6 +649,8 @@ function BrainChat() {
       const session: ChatHistorySession = { id: sessionIdRef.current, ts: Date.now(), messages: finalMessages };
       saveHist(HIST_KEY.chat, session);
       setHistSessions(loadHist<ChatHistorySession>(HIST_KEY.chat));
+      const firstMsg = finalMessages.find((m) => m.role === "user")?.content ?? "";
+      if (user?.id) ogSaveHistory(HIST_KEY.chat, session, user.id, "chat", firstMsg, setHistSessions);
     } catch {
       setError("Could not reach Brainiac. Try again.");
       setMessages(next.slice(0, -1));
@@ -634,6 +686,7 @@ function BrainChat() {
                     onClick={() => setExpandedId(expandedId === s.id ? null : s.id)}>
                     <MessageSquare size={12} className="text-primary shrink-0" />
                     <p className="text-foreground text-xs font-medium flex-1 truncate">{firstUser}</p>
+                    <OGBadge status={s.ogStatus} explorerUrl={s.ogExplorerUrl} />
                     <span className="text-muted-foreground/40 text-xs shrink-0">{msgCount} msg{msgCount !== 1 ? "s" : ""}</span>
                     <span className="text-muted-foreground/50 text-xs shrink-0 ml-2">{timeAgo(s.ts)}</span>
                     <button onClick={(e) => { e.stopPropagation(); deleteHist(HIST_KEY.chat, s.id); setHistSessions(loadHist<ChatHistorySession>(HIST_KEY.chat)); }}

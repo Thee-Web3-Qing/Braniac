@@ -1,1 +1,1 @@
-- [GramJS ESM import fix](gramjs-esm.md) — import StringSession from main `telegram` package's `sessions` export, not `telegram/sessions` directory
+- [0G history recording pattern](og-history-pattern.md) — history sessions (chat/content/community) fire-and-forget POST to /api/og/save-history; ogStatus stored in localStorage; OGBadge shows recording/confirmed/failed.
