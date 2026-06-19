@@ -1,8 +1,56 @@
 import { useState, useRef, useEffect } from "react";
-import { Wand2, Copy, Check, RefreshCw, ChevronDown, FileText, MessageSquare, Mic, Twitter, Users, TrendingUp, Clock, BarChart3, Cpu, Zap, Send, Bot, User } from "lucide-react";
+import { Wand2, Copy, Check, RefreshCw, ChevronDown, FileText, MessageSquare, Mic, Twitter, Users, TrendingUp, Clock, BarChart3, Cpu, Zap, Send, Bot, User, History, Trash2, Plus } from "lucide-react";
 import { useGenerateDraft } from "@workspace/api-client-react";
 import { useWallets, usePrivy } from "@privy-io/react-auth";
 import { ExternalLink } from "lucide-react";
+
+type ChatHistorySession = { id: string; ts: number; messages: ChatMessage[] };
+type ContentHistorySession = { id: string; ts: number; typeId: string; typeLabel: string; topic: string; draft: string };
+type CommunityHistorySession = { id: string; ts: number; question: string; insights: string };
+
+const HIST_KEY = { chat: "brainiac:history:chat", content: "brainiac:history:content", community: "brainiac:history:community" } as const;
+
+function loadHist<T>(key: string): T[] {
+  try { return JSON.parse(localStorage.getItem(key) ?? "[]") as T[]; } catch { return []; }
+}
+function saveHist<T extends { id: string; ts: number }>(key: string, item: T) {
+  const list = loadHist<T>(key).filter((x) => x.id !== item.id);
+  localStorage.setItem(key, JSON.stringify([item, ...list].slice(0, 30)));
+}
+function deleteHist(key: string, id: string) {
+  localStorage.setItem(key, JSON.stringify(loadHist<{ id: string }>(key).filter((x) => x.id !== id)));
+}
+function timeAgo(ts: number): string {
+  const d = Date.now() - ts;
+  if (d < 60_000) return "just now";
+  if (d < 3_600_000) return `${Math.floor(d / 60_000)}m ago`;
+  if (d < 86_400_000) return `${Math.floor(d / 3_600_000)}h ago`;
+  return `${Math.floor(d / 86_400_000)}d ago`;
+}
+
+function SectionToggle({ view, onChange, onNew }: { view: "active" | "history"; onChange: (v: "active" | "history") => void; onNew?: () => void }) {
+  return (
+    <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-0.5 bg-card border border-border rounded-lg p-0.5">
+        {(["active", "history"] as const).map((v) => (
+          <button key={v} onClick={() => onChange(v)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              view === v ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}>
+            {v === "history" && <History size={11} />}
+            {v === "active" ? "Active" : "History"}
+          </button>
+        ))}
+      </div>
+      {view === "history" && onNew && (
+        <button onClick={onNew}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg px-3 py-1.5 transition-colors">
+          <Plus size={11} /> New
+        </button>
+      )}
+    </div>
+  );
+}
 
 const DRAFT_TYPES = [
   { id: "thread",  label: "X Thread",        icon: Twitter,       desc: "Turn feed signals into a Twitter thread" },
@@ -60,6 +108,9 @@ function CopyBtn({ text }: { text: string }) {
 }
 
 function ContentBrain() {
+  const [view, setView] = useState<"active" | "history">("active");
+  const [histSessions, setHistSessions] = useState<ContentHistorySession[]>(() => loadHist<ContentHistorySession>(HIST_KEY.content));
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState(DRAFT_TYPES[0]);
   const [prompt, setPrompt] = useState("");
   const [draft, setDraft] = useState<string | null>(null);
@@ -68,7 +119,20 @@ function ContentBrain() {
 
   const generateMutation = useGenerateDraft({
     mutation: {
-      onSuccess: (data) => { setDraft(data.content); setError(null); },
+      onSuccess: (data) => {
+        setDraft(data.content);
+        setError(null);
+        const session: ContentHistorySession = {
+          id: `content-${Date.now()}`,
+          ts: Date.now(),
+          typeId: selectedType.id,
+          typeLabel: selectedType.label,
+          topic: prompt,
+          draft: data.content,
+        };
+        saveHist(HIST_KEY.content, session);
+        setHistSessions(loadHist<ContentHistorySession>(HIST_KEY.content));
+      },
       onError: () => { setError("Something went wrong. Try again in a moment."); setDraft(null); },
     },
   });
@@ -81,9 +145,47 @@ function ContentBrain() {
 
   const TypeIcon = selectedType.icon;
 
+  if (view === "history") {
+    return (
+      <div>
+        <SectionToggle view={view} onChange={setView} onNew={() => { setDraft(null); setPrompt(""); setView("active"); }} />
+        {histSessions.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
+            <History size={28} className="text-muted-foreground/30" />
+            <p className="text-muted-foreground text-sm">No drafts yet. Generate one to see it here.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {histSessions.map((s) => (
+              <div key={s.id} className="bg-card border border-border rounded-xl overflow-hidden">
+                <div className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/3 transition-colors"
+                  onClick={() => setExpandedId(expandedId === s.id ? null : s.id)}>
+                  <span className="text-xs text-primary bg-primary/10 px-1.5 py-0.5 rounded shrink-0">{s.typeLabel}</span>
+                  <p className="text-foreground text-xs font-medium flex-1 truncate">{s.topic}</p>
+                  <span className="text-muted-foreground/50 text-xs shrink-0">{timeAgo(s.ts)}</span>
+                  <button onClick={(e) => { e.stopPropagation(); deleteHist(HIST_KEY.content, s.id); setHistSessions(loadHist<ContentHistorySession>(HIST_KEY.content)); }}
+                    className="text-muted-foreground/30 hover:text-red-400 transition-colors shrink-0 ml-1">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+                {expandedId === s.id && (
+                  <div className="border-t border-border px-4 py-3">
+                    <div className="flex justify-end mb-2"><CopyBtn text={s.draft} /></div>
+                    <pre className="text-muted-foreground text-sm leading-relaxed whitespace-pre-wrap font-sans">{s.draft}</pre>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="grid md:grid-cols-3 gap-4 md:gap-5">
       <div className="md:col-span-2 space-y-4">
+        <SectionToggle view={view} onChange={setView} />
         {/* Type picker */}
         <div className="relative">
           <button data-testid="button-type-selector" onClick={() => setShowTypeMenu(!showTypeMenu)}
@@ -206,6 +308,9 @@ function ContentBrain() {
 }
 
 function CommunityIntel() {
+  const [view, setView] = useState<"active" | "history">("active");
+  const [histSessions, setHistSessions] = useState<CommunityHistorySession[]>(() => loadHist<CommunityHistorySession>(HIST_KEY.community));
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [insights, setInsights] = useState<string | null>(null);
@@ -221,13 +326,55 @@ function CommunityIntel() {
       });
       const data = await res.json() as { insights?: string; error?: string };
       if (!res.ok || data.error) throw new Error(data.error);
-      setInsights(data.insights ?? null);
+      const result = data.insights ?? "";
+      setInsights(result);
+      if (result) {
+        const session: CommunityHistorySession = { id: `community-${Date.now()}`, ts: Date.now(), question: q, insights: result };
+        saveHist(HIST_KEY.community, session);
+        setHistSessions(loadHist<CommunityHistorySession>(HIST_KEY.community));
+      }
     } catch {
       setError("Could not generate insights. Try again.");
     } finally {
       setLoading(false);
     }
   };
+
+  if (view === "history") {
+    return (
+      <div>
+        <SectionToggle view={view} onChange={setView} onNew={() => { setInsights(null); setQuery(""); setView("active"); }} />
+        {histSessions.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
+            <History size={28} className="text-muted-foreground/30" />
+            <p className="text-muted-foreground text-sm">No community intel yet. Ask a question to see it here.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {histSessions.map((s) => (
+              <div key={s.id} className="bg-card border border-border rounded-xl overflow-hidden">
+                <div className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/3 transition-colors"
+                  onClick={() => setExpandedId(expandedId === s.id ? null : s.id)}>
+                  <Users size={12} className="text-primary shrink-0" />
+                  <p className="text-foreground text-xs font-medium flex-1 truncate">{s.question}</p>
+                  <span className="text-muted-foreground/50 text-xs shrink-0">{timeAgo(s.ts)}</span>
+                  <button onClick={(e) => { e.stopPropagation(); deleteHist(HIST_KEY.community, s.id); setHistSessions(loadHist<CommunityHistorySession>(HIST_KEY.community)); }}
+                    className="text-muted-foreground/30 hover:text-red-400 transition-colors shrink-0 ml-1">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+                {expandedId === s.id && (
+                  <div className="border-t border-border px-4 py-3">
+                    <pre className="text-muted-foreground text-sm leading-relaxed whitespace-pre-wrap font-sans">{s.insights}</pre>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="grid md:grid-cols-3 gap-4 md:gap-5">
@@ -394,6 +541,10 @@ const CHAT_STARTERS = [
 function BrainChat() {
   const { wallets } = useWallets();
   const { user } = usePrivy();
+  const [view, setView] = useState<"active" | "history">("active");
+  const [histSessions, setHistSessions] = useState<ChatHistorySession[]>(() => loadHist<ChatHistorySession>(HIST_KEY.chat));
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const sessionIdRef = useRef<string>(`chat-${Date.now()}`);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -443,7 +594,11 @@ function BrainChat() {
       });
       const data = (await res.json()) as { reply?: string; error?: string; ogRecordId?: string | null; ogStatus?: string | null };
       if (!res.ok || data.error) throw new Error(data.error ?? "Unknown error");
-      setMessages([...next, { role: "assistant", content: data.reply!, ogRecordId: data.ogRecordId, ogStatus: data.ogStatus }]);
+      const finalMessages: ChatMessage[] = [...next, { role: "assistant", content: data.reply!, ogRecordId: data.ogRecordId, ogStatus: data.ogStatus }];
+      setMessages(finalMessages);
+      const session: ChatHistorySession = { id: sessionIdRef.current, ts: Date.now(), messages: finalMessages };
+      saveHist(HIST_KEY.chat, session);
+      setHistSessions(loadHist<ChatHistorySession>(HIST_KEY.chat));
     } catch {
       setError("Could not reach Brainiac. Try again.");
       setMessages(next.slice(0, -1));
@@ -453,8 +608,64 @@ function BrainChat() {
     }
   };
 
+  const startNewChat = () => {
+    setMessages([]);
+    sessionIdRef.current = `chat-${Date.now()}`;
+    setView("active");
+  };
+
+  if (view === "history") {
+    return (
+      <div>
+        <SectionToggle view={view} onChange={setView} onNew={startNewChat} />
+        {histSessions.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
+            <History size={28} className="text-muted-foreground/30" />
+            <p className="text-muted-foreground text-sm">No conversations yet. Start chatting to see history here.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {histSessions.map((s) => {
+              const firstUser = s.messages.find((m) => m.role === "user")?.content ?? "Conversation";
+              const msgCount = s.messages.length;
+              return (
+                <div key={s.id} className="bg-card border border-border rounded-xl overflow-hidden">
+                  <div className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/3 transition-colors"
+                    onClick={() => setExpandedId(expandedId === s.id ? null : s.id)}>
+                    <MessageSquare size={12} className="text-primary shrink-0" />
+                    <p className="text-foreground text-xs font-medium flex-1 truncate">{firstUser}</p>
+                    <span className="text-muted-foreground/40 text-xs shrink-0">{msgCount} msg{msgCount !== 1 ? "s" : ""}</span>
+                    <span className="text-muted-foreground/50 text-xs shrink-0 ml-2">{timeAgo(s.ts)}</span>
+                    <button onClick={(e) => { e.stopPropagation(); deleteHist(HIST_KEY.chat, s.id); setHistSessions(loadHist<ChatHistorySession>(HIST_KEY.chat)); }}
+                      className="text-muted-foreground/30 hover:text-red-400 transition-colors shrink-0 ml-1">
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                  {expandedId === s.id && (
+                    <div className="border-t border-border px-4 py-3 space-y-2.5 max-h-80 overflow-y-auto">
+                      {s.messages.map((m, i) => (
+                        <div key={i} className={`flex gap-2 ${m.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                          <div className={`max-w-[85%] rounded-xl px-3 py-2 text-xs leading-relaxed ${
+                            m.role === "user" ? "bg-primary/15 text-foreground" : "bg-background text-muted-foreground"
+                          }`}>
+                            <pre className="whitespace-pre-wrap font-sans">{m.content}</pre>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-[calc(100vh-13rem)] max-h-[700px] min-h-[400px]">
+      <SectionToggle view={view} onChange={setView} />
       {/* Messages */}
       <div className="flex-1 overflow-y-auto space-y-4 pr-1 pb-2">
         {messages.length === 0 && (
