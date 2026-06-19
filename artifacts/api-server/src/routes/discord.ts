@@ -5,12 +5,12 @@ const router = Router();
 const DISCORD_API = "https://discord.com/api/v10";
 
 function getRedirectUri(req: Request): string {
-  // Use the actual host of the incoming request so this works for both
-  // the dev environment and the published .replit.app domain without changes.
+  // Explicit override — set DISCORD_REDIRECT_URI for production domains.
+  if (process.env.DISCORD_REDIRECT_URI) return process.env.DISCORD_REDIRECT_URI;
+  // Dev: derive from request host (works on the picard.replit.dev preview).
   const host  = req.get("x-forwarded-host") ?? req.get("host");
   const proto = req.get("x-forwarded-proto") ?? "https";
-  if (host) return `${proto}://${host}/api/discord/callback`;
-  // Last-resort fallback (local dev without proxy)
+  if (host && host !== "localhost") return `${proto}://${host}/api/discord/callback`;
   const domain = process.env.REPLIT_DEV_DOMAIN;
   if (domain) return `https://${domain}/api/discord/callback`;
   return "http://localhost:80/api/discord/callback";
