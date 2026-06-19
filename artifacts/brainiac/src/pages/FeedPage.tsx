@@ -252,13 +252,14 @@ function TelegramAuthFlow({ onConnected }: {
   );
 }
 
-function ConnectModal({ onClose, onChannelTracked, onTelegramConnected, discordAuth }: {
+function ConnectModal({ onClose, onChannelTracked, onTelegramConnected, discordAuth, initialTab = "discord" }: {
   onClose: () => void;
   onChannelTracked: (guild: { id: string; name: string }, channels: Array<{ id: string; name: string }>) => void;
   onTelegramConnected: (session: string, chats: TgChat[]) => void;
   discordAuth: DiscordAuth | null;
+  initialTab?: "discord" | "telegram";
 }) {
-  const [tab, setTab]   = useState<"discord" | "telegram">("discord");
+  const [tab, setTab]   = useState<"discord" | "telegram">(initialTab);
   const [step, setStep] = useState<"guild" | "channels">("guild");
   const [selectedGuild, setSelectedGuild] = useState<{ id: string; name: string } | null>(null);
   const [guildChannels, setGuildChannels] = useState<Array<{ id: string; name: string }>>([]);
@@ -433,6 +434,8 @@ export default function FeedPage() {
   const [activeTag, setActiveTag]       = useState("All");
   const [search, setSearch]             = useState("");
   const [showModal, setShowModal]       = useState(false);
+  const [modalInitialTab, setModalInitialTab] = useState<"discord" | "telegram">("discord");
+  const [tgSessionExpired, setTgSessionExpired] = useState(false);
   const [feed, setFeed]                 = useState<FeedItem[]>(MOCK_FEED);
   const [tgLoading, setTgLoading]             = useState(false);
   const [lastTgSuccessAt, setLastTgSuccessAt] = useState<number | null>(null);
@@ -518,6 +521,8 @@ export default function FeedPage() {
                 setTrackedTgChats([]);
                 localStorage.removeItem(LS_TG_SESSION);
                 localStorage.removeItem(LS_TG_CHATS);
+                setConnectedSources((prev) => prev.filter((s) => s.source !== "Telegram"));
+                setTgSessionExpired(true);
               }
             }
             return;
@@ -602,6 +607,7 @@ export default function FeedPage() {
 
   const handleTelegramConnected = (session: string, chats: TgChat[]) => {
     setTgSession(session);
+    setTgSessionExpired(false);
     setTrackedTgChats((prev) => {
       const ids = new Set(prev.map((c) => c.id));
       return [...prev, ...chats.filter((c) => !ids.has(c.id))];
@@ -632,6 +638,7 @@ export default function FeedPage() {
           onChannelTracked={handleChannelTracked}
           onTelegramConnected={handleTelegramConnected}
           discordAuth={discordAuth}
+          initialTab={modalInitialTab}
         />
       )}
 
@@ -665,6 +672,27 @@ export default function FeedPage() {
           <button onClick={() => { setDiscordAuth(null); setTrackedDiscordChannels([]); localStorage.removeItem(LS_DISCORD_AUTH); localStorage.removeItem(LS_DISCORD_CHANNELS); setConnectedSources((p) => p.filter((s) => s.source !== "Discord")); }}
             className="ml-auto text-muted-foreground/50 hover:text-muted-foreground transition-colors text-xs">
             Disconnect
+          </button>
+        </div>
+      )}
+
+      {tgSessionExpired && (
+        <div data-testid="banner-tg-session-expired" className="flex items-center gap-2 mb-3 px-3 py-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+          <KeyRound size={13} className="text-amber-400 shrink-0" />
+          <span className="text-amber-300 text-xs flex-1">
+            Your Telegram session expired — please reconnect to resume reading your chats.
+          </span>
+          <button
+            data-testid="button-tg-reconnect"
+            onClick={() => { setModalInitialTab("telegram"); setShowModal(true); }}
+            className="text-xs font-medium px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 rounded-lg transition-colors shrink-0">
+            Reconnect
+          </button>
+          <button
+            data-testid="button-tg-dismiss-expired"
+            onClick={() => setTgSessionExpired(false)}
+            className="text-muted-foreground/50 hover:text-muted-foreground transition-colors shrink-0">
+            <X size={13} />
           </button>
         </div>
       )}
