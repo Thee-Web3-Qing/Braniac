@@ -1,7 +1,46 @@
 import { useState } from "react";
-import { Check, Copy, Wallet, Zap, Shield, RefreshCw, ExternalLink, X } from "lucide-react";
+import { Check, Copy, Wallet, Zap, Shield, RefreshCw, ExternalLink, X, Clock } from "lucide-react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { Link } from "wouter";
+
+const EARLY_BIRD_DEADLINE = new Date("2026-07-20T23:59:59Z");
+const isEarlyBird = () => new Date() < EARLY_BIRD_DEADLINE;
+
+function daysLeft() {
+  const ms = EARLY_BIRD_DEADLINE.getTime() - Date.now();
+  return Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
+}
+
+const PLANS = {
+  monthly: {
+    label: "Monthly",
+    usd: "$5",
+    period: "/mo",
+    usdc: "5",
+    earlyBird: false,
+    savings: null,
+  },
+  annual: {
+    label: "Annual",
+    usd: isEarlyBird() ? "$45" : "$50",
+    period: "/yr",
+    usdc: isEarlyBird() ? "45" : "50",
+    earlyBird: isEarlyBird(),
+    regularUsd: "$50",
+    savings: isEarlyBird() ? "Save $15" : "Save $10",
+  },
+  lifetime: {
+    label: "Lifetime",
+    usd: isEarlyBird() ? "$250" : "$300",
+    period: " once",
+    usdc: isEarlyBird() ? "250" : "300",
+    earlyBird: isEarlyBird(),
+    regularUsd: "$300",
+    savings: "Pay once, yours forever",
+  },
+} as const;
+
+type Plan = keyof typeof PLANS;
 
 const PRO_FEATURES = [
   "Unlimited AI drafts and chat",
@@ -20,12 +59,6 @@ const FREE_LIMITS = [
 ];
 
 const PAYMENT_WALLET = "0x9914C8de5CdA23928B67B41F5E19ad7B73A3f886";
-const MONTHLY_ETH = "0.003";
-const ANNUAL_ETH  = "0.027";
-const MONTHLY_USD = "$9";
-const ANNUAL_USD  = "$79";
-
-type Plan = "monthly" | "annual";
 
 function CopyButton({ value, label }: { value: string; label?: string }) {
   const [copied, setCopied] = useState(false);
@@ -48,8 +81,9 @@ function PayModal({ plan, onClose }: { plan: Plan; onClose: () => void }) {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const amount = plan === "monthly" ? MONTHLY_ETH : ANNUAL_ETH;
-  const label  = plan === "monthly" ? "1 month" : "1 year";
+  const p = PLANS[plan];
+  const usdcAmount = p.usdc;
+  const planLabel = plan === "monthly" ? "1 month" : plan === "annual" ? "1 year" : "Lifetime";
 
   const sendFromWallet = async () => {
     if (!authenticated) { login(); return; }
@@ -61,10 +95,10 @@ function PayModal({ plan, onClose }: { plan: Plan; onClose: () => void }) {
     setSending(true); setError(null);
     try {
       const provider = await embeddedWallet.getEthereumProvider();
-      const amountHex = "0x" + Math.round(parseFloat(amount) * 1e18).toString(16);
+      const weiAmount = BigInt(Math.round(parseFloat(usdcAmount) * 1e18));
       const hash = await provider.request({
         method: "eth_sendTransaction",
-        params: [{ from: embeddedWallet.address, to: PAYMENT_WALLET, value: amountHex }],
+        params: [{ from: embeddedWallet.address, to: PAYMENT_WALLET, value: "0x" + weiAmount.toString(16) }],
       }) as string;
       setTxHash(hash);
       setSent(true);
@@ -81,7 +115,7 @@ function PayModal({ plan, onClose }: { plan: Plan; onClose: () => void }) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div>
             <h3 className="font-display font-semibold text-foreground">Pay with crypto</h3>
-            <p className="text-muted-foreground text-xs mt-0.5">Wallet-to-wallet · {label} · {amount} ETH</p>
+            <p className="text-muted-foreground text-xs mt-0.5">Wallet-to-wallet · {planLabel} · ${usdcAmount} USDC</p>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
             <X size={18} />
@@ -131,8 +165,8 @@ function PayModal({ plan, onClose }: { plan: Plan; onClose: () => void }) {
                 <div className="border-t border-border/50 pt-3">
                   <p className="text-muted-foreground/60 text-xs mb-1">Amount</p>
                   <div className="flex items-center gap-2">
-                    <span className="text-foreground text-sm font-semibold">{amount} ETH</span>
-                    <CopyButton value={amount} label="Copy amount" />
+                    <span className="text-foreground text-sm font-semibold">${usdcAmount} USDC</span>
+                    <CopyButton value={usdcAmount} label="Copy amount" />
                   </div>
                 </div>
               </div>
@@ -150,7 +184,7 @@ function PayModal({ plan, onClose }: { plan: Plan; onClose: () => void }) {
               {error && <p className="text-red-400 text-xs text-center">{error}</p>}
 
               <p className="text-muted-foreground/50 text-xs text-center leading-relaxed">
-                Or send manually from any wallet to the address above. Your session string and messages are never on our servers — only you hold the keys.
+                Or send USDC manually from any wallet to the address above. No card details, no KYC, no middleman.
               </p>
 
               <div className="space-y-1.5">
@@ -182,11 +216,15 @@ export default function UpgradePage() {
   const [selectedPlan, setSelectedPlan] = useState<Plan>("annual");
   const [showPayModal, setShowPayModal] = useState(false);
   const { authenticated, login } = usePrivy();
+  const earlyBird = isEarlyBird();
+  const days = daysLeft();
 
   const handleUpgrade = () => {
     if (!authenticated) { login(); return; }
     setShowPayModal(true);
   };
+
+  const currentPlan = PLANS[selectedPlan];
 
   return (
     <div className="p-4 md:p-6 max-w-3xl mx-auto animate-fade-in">
@@ -197,23 +235,32 @@ export default function UpgradePage() {
       <div className="mb-6">
         <Link href="/dashboard">
           <button className="text-muted-foreground text-xs hover:text-foreground transition-colors mb-4 block">
-            ← Back to dashboard
+            Back to dashboard
           </button>
         </Link>
         <h1 className="font-display font-bold text-foreground text-xl md:text-2xl">Upgrade to Pro</h1>
         <p className="text-muted-foreground text-sm mt-0.5">Pay wallet-to-wallet — no cards, no KYC, no middleman.</p>
       </div>
 
+      {earlyBird && (
+        <div className="flex items-center gap-2.5 bg-amber-500/8 border border-amber-500/25 rounded-xl px-4 py-3 mb-5">
+          <Clock size={14} className="text-amber-400 shrink-0" />
+          <p className="text-amber-300 text-xs">
+            <span className="font-semibold">Early bird pricing</span> — {days} day{days !== 1 ? "s" : ""} left. Annual and Lifetime prices increase on July 20.
+          </p>
+        </div>
+      )}
+
       {/* Plan selector */}
-      <div className="flex gap-2 mb-6 bg-card border border-border rounded-xl p-1 w-full sm:w-auto sm:inline-flex">
-        {(["monthly", "annual"] as const).map((p) => (
+      <div className="flex gap-1.5 mb-6 bg-card border border-border rounded-xl p-1">
+        {(["monthly", "annual", "lifetime"] as Plan[]).map((p) => (
           <button key={p} onClick={() => setSelectedPlan(p)}
-            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
               selectedPlan === p ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
             }`}>
-            {p === "monthly" ? "Monthly" : "Annual"}
-            {p === "annual" && (
-              <span className="text-[10px] bg-green-500/15 text-green-400 border border-green-500/20 px-1.5 py-0.5 rounded-full font-semibold">Save 25%</span>
+            {PLANS[p].label}
+            {p !== "monthly" && earlyBird && (
+              <span className="hidden sm:inline text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded-full font-semibold">Early bird</span>
             )}
           </button>
         ))}
@@ -243,28 +290,44 @@ export default function UpgradePage() {
             Pro
           </div>
           <p className="text-primary text-xs font-semibold uppercase tracking-wide mb-3">Pro</p>
-          <div className="flex items-end gap-1 mb-4">
-            <span className="font-display font-bold text-3xl text-foreground">
-              {selectedPlan === "monthly" ? MONTHLY_USD : ANNUAL_USD}
-            </span>
-            <span className="text-muted-foreground text-sm mb-1">
-              /{selectedPlan === "monthly" ? "mo" : "yr"}
-            </span>
+
+          <div className="flex items-end gap-1 mb-1">
+            <span className="font-display font-bold text-3xl text-foreground">{currentPlan.usd}</span>
+            <span className="text-muted-foreground text-sm mb-1">{currentPlan.period}</span>
           </div>
-          <ul className="space-y-2 mb-5">
+
+          {earlyBird && selectedPlan !== "monthly" && (
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xs text-muted-foreground/50 line-through">{(currentPlan as typeof PLANS.annual).regularUsd}</span>
+              <span className="text-xs text-amber-400 font-medium">{currentPlan.savings}</span>
+            </div>
+          )}
+          {(!earlyBird || selectedPlan === "monthly") && currentPlan.savings && (
+            <p className="text-xs text-muted-foreground mb-3">{currentPlan.savings}</p>
+          )}
+
+          <ul className="space-y-2 mb-5 mt-2">
             {PRO_FEATURES.map((f) => (
               <li key={f} className="flex items-start gap-2 text-xs text-foreground">
                 <Check size={13} className="text-primary shrink-0 mt-0.5" /> {f}
               </li>
             ))}
           </ul>
+
           <button onClick={handleUpgrade}
             className="w-full py-3 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2">
             <Zap size={14} />
-            Pay {selectedPlan === "monthly" ? `${MONTHLY_ETH} ETH/mo` : `${ANNUAL_ETH} ETH/yr`} with crypto
+            Pay {currentPlan.usd} USDC with crypto
           </button>
         </div>
       </div>
+
+      {earlyBird && selectedPlan !== "monthly" && (
+        <div className="flex items-center gap-2.5 bg-card border border-border rounded-xl px-4 py-3 mb-4 text-xs text-muted-foreground">
+          <Clock size={13} className="text-amber-400 shrink-0" />
+          Price rises to {(currentPlan as typeof PLANS.annual).regularUsd} on July 20. Lock in the early bird rate today.
+        </div>
+      )}
 
       {/* Security note */}
       <div className="flex items-start gap-3 bg-card border border-border rounded-xl p-4">
