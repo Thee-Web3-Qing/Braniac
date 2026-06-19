@@ -5,6 +5,43 @@ const router = Router();
 
 const QWEN_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1";
 
+async function callQwen(
+  apiKey: string,
+  messages: Array<{ role: string; content: string }>,
+  opts: { model?: string; max_tokens?: number; temperature?: number } = {}
+): Promise<string> {
+  const body = {
+    model: opts.model ?? "qwen-turbo",
+    messages,
+    max_tokens: opts.max_tokens ?? 800,
+    temperature: opts.temperature ?? 0.7,
+    stream: false,
+  };
+
+  const response = await fetch(`${QWEN_BASE_URL}/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => "(no body)");
+    console.error(`[Qwen] ${response.status} ${response.statusText}:`, errText);
+    let parsed: Record<string, unknown> = {};
+    try { parsed = JSON.parse(errText) as Record<string, unknown>; } catch { /* ignore */ }
+    const msg = (parsed as { error?: { message?: string } }).error?.message ?? errText;
+    throw new Error(`Qwen ${response.status}: ${msg}`);
+  }
+
+  const data = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  return data.choices?.[0]?.message?.content ?? "";
+}
+
 const TYPE_INSTRUCTIONS: Record<string, string> = {
   thread:
     "Write a Twitter/X thread (5-8 tweets, numbered 1/ through 8/). Each tweet max 280 chars. Start with a strong hook. Use line breaks between tweets.",
@@ -32,10 +69,7 @@ router.post("/generate", async (req, res) => {
 
   const { type, topic, feedContext } = parseResult.data;
   const apiKey = process.env.QWEN_API_KEY;
-
-  if (!apiKey) {
-    return res.status(500).json({ error: "QWEN_API_KEY not configured" });
-  }
+  if (!apiKey) return res.status(500).json({ error: "QWEN_API_KEY not configured" });
 
   const systemPrompt = `You are Brainiac, an AI writing assistant for Web3 creators and community builders.
 Your job is to help users create engaging Web3 content in their voice — confident, informed, no fluff.
@@ -51,39 +85,14 @@ ${feedContext || DEFAULT_FEED_CONTEXT}
 Write the full piece now.`;
 
   try {
-    const response = await fetch(`${QWEN_BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "qwen-plus",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userMessage },
-        ],
-        max_tokens: 1000,
-        temperature: 0.7,
-      }),
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      return res
-        .status(500)
-        .json({ error: err.error?.message || "Qwen API error" });
-    }
-
-    const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const content =
-      data.choices?.[0]?.message?.content || "Could not generate draft.";
-
-    return res.json({ content, type });
+    const content = await callQwen(apiKey, [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage },
+    ], { max_tokens: 1000, temperature: 0.7 });
+    return res.json({ content: content || "Could not generate draft.", type });
   } catch (err) {
-    return res.status(500).json({ error: "Failed to connect to AI service" });
+    const msg = err instanceof Error ? err.message : "AI service error";
+    return res.status(500).json({ error: msg });
   }
 });
 
@@ -140,28 +149,14 @@ ${feedSignals}
 Write a personalized briefing. Mention my wallet names where relevant. Flag anything time-sensitive.`;
 
   try {
-    const response = await fetch(`${QWEN_BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "qwen-plus",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userMessage },
-        ],
-        max_tokens: 800,
-        temperature: 0.6,
-      }),
-    });
-
-    if (!response.ok) return res.status(500).json({ error: "AI service error" });
-
-    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const brief = data.choices?.[0]?.message?.content || "Could not generate briefing.";
-
-    return res.json({ brief });
-  } catch {
-    return res.status(500).json({ error: "Failed to connect to AI service" });
+    const brief = await callQwen(apiKey, [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage },
+    ], { max_tokens: 800, temperature: 0.6 });
+    return res.json({ brief: brief || "Could not generate briefing." });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "AI service error";
+    return res.status(500).json({ error: msg });
   }
 });
 
@@ -214,26 +209,14 @@ ${activityText}
 Question: "${question}"`;
 
   try {
-    const response = await fetch(`${QWEN_BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "qwen-plus",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userMessage },
-        ],
-        max_tokens: 700,
-        temperature: 0.5,
-      }),
-    });
-
-    if (!response.ok) return res.status(500).json({ error: "AI service error" });
-    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const answer = data.choices?.[0]?.message?.content || "Could not generate analysis.";
-    return res.json({ answer });
-  } catch {
-    return res.status(500).json({ error: "Failed to connect to AI service" });
+    const answer = await callQwen(apiKey, [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage },
+    ], { max_tokens: 700, temperature: 0.5 });
+    return res.json({ answer: answer || "Could not generate analysis." });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "AI service error";
+    return res.status(500).json({ error: msg });
   }
 });
 
@@ -264,7 +247,7 @@ Community intelligence snapshot (last 30 days):
 - Avg response time on hot posts: 4 minutes
 `;
 
-  const systemPrompt = `You are Brainiac's community intelligence engine. You analyze Web3 community data and give community managers actionable, specific strategies. 
+  const systemPrompt = `You are Brainiac's community intelligence engine. You analyze Web3 community data and give community managers actionable, specific strategies.
 
 Format: use bold headers (**Timing Strategy**, **Content Strategy**, **Engagement Tactics**, **30-Day Action Plan**) with bullet points. Be specific — reference actual times, topics, and percentages from the data. No generic advice.`;
 
@@ -278,26 +261,14 @@ Question: "${question?.trim() || "Give me a complete community intelligence repo
 Be specific and actionable. Reference the actual metrics.`;
 
   try {
-    const response = await fetch(`${QWEN_BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "qwen-plus",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userMessage },
-        ],
-        max_tokens: 900,
-        temperature: 0.6,
-      }),
-    });
-
-    if (!response.ok) return res.status(500).json({ error: "AI service error" });
-    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const insights = data.choices?.[0]?.message?.content || "Could not generate insights.";
-    return res.json({ insights });
-  } catch {
-    return res.status(500).json({ error: "Failed to connect to AI service" });
+    const insights = await callQwen(apiKey, [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage },
+    ], { max_tokens: 900, temperature: 0.6 });
+    return res.json({ insights: insights || "Could not generate insights." });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "AI service error";
+    return res.status(500).json({ error: msg });
   }
 });
 
@@ -313,7 +284,7 @@ router.post("/chat", async (req, res) => {
   }
 
   const apiKey = process.env.QWEN_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: "AI service not configured" });
+  if (!apiKey) return res.status(500).json({ error: "AI service not configured — QWEN_API_KEY missing" });
 
   const contextParts: string[] = [];
   if (feedContext?.trim()) {
@@ -333,29 +304,66 @@ Rules:
 - Reference their actual feed signals and wallet data when relevant
 - If asked about price predictions or financial advice, give a balanced view with risks
 - Keep responses concise (3-6 sentences or a short bullet list) unless depth is requested
-- No corporate fluff, no "As an AI language model..." — just answer${contextBlock}`;
+- No corporate fluff — just answer${contextBlock}`;
 
   try {
-    const response = await fetch(`${QWEN_BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "qwen-plus",
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...messages,
-        ],
-        max_tokens: 800,
-        temperature: 0.7,
-      }),
-    });
+    const reply = await callQwen(apiKey, [
+      { role: "system", content: systemPrompt },
+      ...messages,
+    ], { max_tokens: 800, temperature: 0.7 });
+    return res.json({ reply: reply || "I couldn't generate a response. Try again." });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "AI service error";
+    console.error("[/brain/chat] Qwen error:", msg);
+    return res.status(500).json({ error: msg });
+  }
+});
 
-    if (!response.ok) return res.status(500).json({ error: "AI service error" });
-    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const reply = data.choices?.[0]?.message?.content ?? "I couldn't generate a response. Try again.";
-    return res.json({ reply });
-  } catch {
-    return res.status(500).json({ error: "Failed to connect to AI service" });
+router.post("/digest", async (req, res) => {
+  const { messages } = req.body as {
+    messages: Array<{ id: string; text: string; source: string; server: string }>;
+  };
+
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: "messages array required" });
+  }
+
+  const apiKey = process.env.QWEN_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "AI service not configured" });
+
+  const batch = messages.slice(0, 60);
+  const msgList = batch
+    .map((m, i) => `[${i}] id="${m.id}" source="${m.source}" server="${m.server}"\n${m.text}`)
+    .join("\n\n");
+
+  const systemPrompt = `You are a Web3 signal filter. Analyze community messages and classify each one.
+
+Return ONLY valid JSON — no markdown, no explanation — in this exact format:
+{"results":[{"id":"<id>","tag":"<tag>","hot":<bool>,"importance":<1-10>}]}
+
+Tags: Alpha | Whale Alert | Vote | Launch | NFT | General
+hot: true if time-sensitive, breaking, or high-signal
+importance: 1=noise, 10=critical alpha — be selective, most messages are 1-4`;
+
+  const userMessage = `Classify these ${batch.length} messages:\n\n${msgList}`;
+
+  try {
+    const raw = await callQwen(apiKey, [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage },
+    ], { max_tokens: 1000, temperature: 0.2 });
+
+    const jsonMatch = raw.match(/\{[\s\S]*"results"[\s\S]*\}/);
+    if (!jsonMatch) {
+      return res.status(500).json({ error: "Could not parse AI response" });
+    }
+    const parsed = JSON.parse(jsonMatch[0]) as {
+      results: Array<{ id: string; tag: string; hot: boolean; importance: number }>;
+    };
+    return res.json(parsed);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "AI service error";
+    return res.status(500).json({ error: msg });
   }
 });
 

@@ -43,14 +43,6 @@ type ConnectedSource = {
   count: string;
 };
 
-const MOCK_FEED: FeedItem[] = [
-  { id: "m1", source: "Discord",  server: "Bankless DAO",        msg: "Alpha drop: New DEX launching on Base tomorrow with $200K liquidity incentives. Early LPs get 3x boost.", time: "2m ago",  tag: "Alpha",       hot: true  },
-  { id: "m2", source: "Telegram", server: "Crypto Signals Pro",  msg: "Whale wallet 0x7f3a moved 500 ETH to Binance 20 mins ago. Watch price action in the next hour.",         time: "11m ago", tag: "Whale Alert", hot: true  },
-  { id: "m3", source: "Discord",  server: "Base Builders",       msg: "Proposal #14 passed with 78% approval. Treasury allocation of 50K USDC confirmed for Q3 grants.",       time: "34m ago", tag: "Vote",        hot: false },
-  { id: "m4", source: "Telegram", server: "NFT Alpha",           msg: "Floor on Pudgy Penguins up 12% in the last hour. Volume spike on Blur. 340 ETH traded in 60 minutes.",  time: "1h ago",  tag: "NFT",         hot: false },
-  { id: "m5", source: "Discord",  server: "DeFi Digest",         msg: "New yield strategy dropping on Arbitrum: 18% APY on stablecoin pairs via Camelot V4. Launching Thu.",   time: "2h ago",  tag: "Alpha",       hot: false },
-  { id: "m6", source: "Telegram", server: "Layer Zero Insiders", msg: "LayerZero airdrop snapshot confirmed. Must have 5+ cross-chain transactions. Deadline end of June.",     time: "3h ago",  tag: "Launch",      hot: true  },
-];
 
 function tagFromText(t: string): string {
   const s = t.toLowerCase();
@@ -436,7 +428,7 @@ export default function FeedPage() {
   const [showModal, setShowModal]       = useState(false);
   const [modalInitialTab, setModalInitialTab] = useState<"discord" | "telegram">("discord");
   const [tgSessionExpired, setTgSessionExpired] = useState(false);
-  const [feed, setFeed]                 = useState<FeedItem[]>(MOCK_FEED);
+  const [feed, setFeed]                 = useState<FeedItem[]>([]);
   const [tgLoading, setTgLoading]             = useState(false);
   const [lastTgSuccessAt, setLastTgSuccessAt] = useState<number | null>(null);
   const [discordLoading, setDiscordLoading]   = useState(false);
@@ -453,13 +445,37 @@ export default function FeedPage() {
     try { return JSON.parse(localStorage.getItem(LS_TG_CHATS) ?? "[]"); } catch { return []; }
   });
 
-  const mergeItems = (incoming: FeedItem[]) => {
+  const mergeItems = useCallback((incoming: FeedItem[]) => {
     setFeed((prev) => {
       const ids = new Set(prev.map((f) => f.id));
       const fresh = incoming.filter((i) => !ids.has(i.id));
-      return fresh.length > 0 ? [...fresh, ...prev].slice(0, 150) : prev;
+      if (fresh.length === 0) return prev;
+      const next = [...fresh, ...prev].slice(0, 150);
+
+      // Enhance with Qwen in background — best effort, won't block display
+      const payload = fresh.map((m) => ({ id: m.id, text: m.msg, source: m.source, server: m.server }));
+      fetch("/api/brain/digest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: payload }),
+      })
+        .then((r) => r.ok ? r.json() : null)
+        .then((data: { results?: Array<{ id: string; tag: string; hot: boolean; importance: number }> } | null) => {
+          if (!data?.results) return;
+          const map = new Map(data.results.map((r) => [r.id, r]));
+          setFeed((cur) =>
+            cur.map((item) => {
+              const enhanced = map.get(item.id);
+              if (!enhanced || enhanced.importance < 4) return item;
+              return { ...item, tag: enhanced.tag as FeedItem["tag"], hot: enhanced.hot };
+            })
+          );
+        })
+        .catch(() => { /* silent fallback — local tags already applied */ });
+
+      return next;
     });
-  };
+  }, []);
 
   const addSource = (name: string, source: "Discord" | "Telegram", count = "live") => {
     setConnectedSources((prev) => prev.find((s) => s.name === name) ? prev : [...prev, { name, source, count }]);
@@ -743,9 +759,15 @@ export default function FeedPage() {
       )}
 
       {connectedSources.length === 0 && !discordAuth && !tgSession && (
-        <div className="mb-5 px-4 py-4 bg-card border border-dashed border-border rounded-xl text-center">
-          <p className="text-muted-foreground text-sm">No sources connected yet.</p>
-          <p className="text-muted-foreground/60 text-xs mt-0.5">Connect Discord or Telegram to see real signals — showing demo feed below.</p>
+        <div className="mb-5 px-4 py-6 bg-card border border-dashed border-border rounded-xl text-center space-y-3">
+          <p className="text-foreground text-sm font-medium">No sources connected yet</p>
+          <p className="text-muted-foreground text-xs leading-relaxed max-w-xs mx-auto">
+            Connect Discord or Telegram and Brainiac will pull your last 24 hours of signals — no bots, no admin access required.
+          </p>
+          <button onClick={() => setShowModal(true)}
+            className="inline-flex items-center gap-1.5 bg-primary/10 hover:bg-primary/20 border border-primary/25 text-primary text-xs font-medium px-4 py-2 rounded-lg transition-colors">
+            <Plus size={12} /> Connect a source
+          </button>
         </div>
       )}
 
@@ -803,13 +825,29 @@ export default function FeedPage() {
         {filtered.length === 0 && (
           <div className="text-center py-16">
             <div className="w-12 h-12 bg-card rounded-2xl flex items-center justify-center mx-auto mb-3">
-              <Filter size={20} className="text-muted-foreground/40" />
+              {(discordAuth || tgSession) && isLoading
+                ? <Loader2 size={20} className="text-muted-foreground/40 animate-spin" />
+                : <Filter size={20} className="text-muted-foreground/40" />}
             </div>
-            <p className="text-muted-foreground text-sm">No signals match your filters.</p>
-            <button data-testid="button-clear-filters" onClick={() => { setActiveSource("All"); setActiveTag("All"); setSearch(""); }}
-              className="text-primary text-xs mt-1 hover:text-primary/80 transition-colors">
-              Clear filters
-            </button>
+            {(discordAuth || tgSession) && feed.length === 0 && isLoading ? (
+              <p className="text-muted-foreground text-sm">Pulling your feed...</p>
+            ) : (discordAuth || tgSession) && feed.length === 0 ? (
+              <>
+                <p className="text-muted-foreground text-sm">Your feed is empty right now.</p>
+                <button onClick={() => { fetchUserTgMessages(); fetchDiscordMessages(); }}
+                  className="text-primary text-xs mt-1 hover:text-primary/80 transition-colors">
+                  Refresh
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-muted-foreground text-sm">No signals match your filters.</p>
+                <button data-testid="button-clear-filters" onClick={() => { setActiveSource("All"); setActiveTag("All"); setSearch(""); }}
+                  className="text-primary text-xs mt-1 hover:text-primary/80 transition-colors">
+                  Clear filters
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
