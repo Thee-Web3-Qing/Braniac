@@ -29,16 +29,50 @@ setInterval(() => {
   }
 }, 60_000);
 
+/**
+ * Returns true for Telegram errors that mean the session is permanently invalid
+ * and the user must re-authenticate (as opposed to transient connection errors).
+ */
+function isAuthError(msg: string): boolean {
+  return (
+    msg.includes("AUTH_KEY_UNREGISTERED") ||
+    msg.includes("AUTH_KEY_INVALID") ||
+    msg.includes("SESSION_EXPIRED") ||
+    msg.includes("SESSION_REVOKED") ||
+    msg.includes("USER_DEACTIVATED") ||
+    msg.includes("USER_DEACTIVATED_BAN")
+  );
+}
+
+/**
+ * Returns a connected TelegramClient for the given session string.
+ * Reconnects automatically if the cached client is disconnected (e.g. after a
+ * server restart). Throws if the session string is permanently invalid.
+ */
 async function getClient(sessionString: string): Promise<TelegramClient> {
   const cached = clientCache.get(sessionString);
-  if (cached?.connected) return cached;
+
+  if (cached) {
+    if (cached.connected) return cached;
+
+    // Client is in cache but disconnected — try reconnecting it in place
+    try {
+      await cached.connect();
+      if (cached.connected) return cached;
+    } catch {
+      // Reconnect failed; fall through to build a fresh client
+    }
+
+    // Remove the stale entry so we don't keep retrying a dead object
+    clientCache.delete(sessionString);
+  }
 
   const { apiId, apiHash } = getCredentials();
   const client = new TelegramClient(
     new StringSession(sessionString),
     apiId,
     apiHash,
-    { connectionRetries: 3, requestRetries: 3, autoReconnect: true }
+    { connectionRetries: 5, requestRetries: 3, autoReconnect: true }
   );
   await client.connect();
   clientCache.set(sessionString, client);
@@ -140,6 +174,10 @@ router.get("/dialogs", async (req, res) => {
     return res.json({ chats });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    if (isAuthError(msg)) {
+      clientCache.delete(sessionString);
+      return res.status(401).json({ error: "Session expired — please sign in again", code: "SESSION_EXPIRED" });
+    }
     return res.status(500).json({ error: `Failed to fetch chats: ${msg}` });
   }
 });
@@ -171,6 +209,10 @@ router.get("/messages/:chatId", async (req, res) => {
     return res.json({ messages: result });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    if (isAuthError(msg)) {
+      clientCache.delete(sessionString);
+      return res.status(401).json({ error: "Session expired — please sign in again", code: "SESSION_EXPIRED" });
+    }
     return res.status(500).json({ error: `Failed to fetch messages: ${msg}` });
   }
 });

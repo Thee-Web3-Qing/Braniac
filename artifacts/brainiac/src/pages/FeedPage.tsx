@@ -505,7 +505,18 @@ export default function FeedPage() {
           const r = await fetch(`/api/telegram/user/messages/${chat.id}?limit=20`, {
             headers: { "x-tg-session": tgSession },
           });
-          if (!r.ok) return;
+          if (!r.ok) {
+            if (r.status === 401) {
+              const body = await r.json().catch(() => ({})) as { code?: string };
+              if (body.code === "SESSION_EXPIRED") {
+                setTgSession(null);
+                setTrackedTgChats([]);
+                localStorage.removeItem(LS_TG_SESSION);
+                localStorage.removeItem(LS_TG_CHATS);
+              }
+            }
+            return;
+          }
           const data = await r.json() as { messages?: Array<{ id: string; text: string; date: string }> };
           (data.messages ?? []).filter((m) => m.text.trim().length > 0).forEach((m) => {
             allItems.push({
