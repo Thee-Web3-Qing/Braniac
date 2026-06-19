@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { GenerateDraftBody } from "@workspace/api-zod";
+import { recordAIInteraction } from "../lib/og-chain";
 
 const router = Router();
 
@@ -153,7 +154,19 @@ Write a personalized briefing. Mention my wallet names where relevant. Flag anyt
       { role: "system", content: systemPrompt },
       { role: "user", content: userMessage },
     ], { max_tokens: 800, temperature: 0.6 });
-    return res.json({ brief: brief || "Could not generate briefing." });
+
+    const briefText = brief || "Could not generate briefing.";
+
+    const userId = (req.body as { userId?: string }).userId;
+    const ogRecord = userId
+      ? recordAIInteraction(userId, "briefing", query ?? "What did I miss?", briefText)
+      : null;
+
+    return res.json({
+      brief: briefText,
+      ogRecordId: ogRecord?.id ?? null,
+      ogStatus: ogRecord?.txStatus ?? null,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "AI service error";
     return res.status(500).json({ error: msg });
@@ -311,7 +324,20 @@ Rules:
       { role: "system", content: systemPrompt },
       ...messages,
     ], { max_tokens: 800, temperature: 0.7 });
-    return res.json({ reply: reply || "I couldn't generate a response. Try again." });
+
+    const replyText = reply || "I couldn't generate a response. Try again.";
+
+    const userId = (req.body as { userId?: string }).userId;
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+    const ogRecord = userId
+      ? recordAIInteraction(userId, "chat", lastUserMsg, replyText)
+      : null;
+
+    return res.json({
+      reply: replyText,
+      ogRecordId: ogRecord?.id ?? null,
+      ogStatus: ogRecord?.txStatus ?? null,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "AI service error";
     console.error("[/brain/chat] Qwen error:", msg);

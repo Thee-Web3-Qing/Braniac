@@ -8,6 +8,7 @@ import {
   type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { aiHistory } from "../lib/og-chain";
 
 const router = Router();
 
@@ -159,6 +160,15 @@ router.get("/history/:userId", (req, res) => {
   return res.json({
     records,
     serverAddress: c?.serverAddress ?? null,
+    chain: { id: 16602, name: "0G Newton Testnet", explorer: OG_EXPLORER },
+  });
+});
+
+router.get("/ai-history/:userId", (req, res) => {
+  const { userId } = req.params;
+  const records = aiHistory.get(decodeURIComponent(userId)) ?? [];
+  return res.json({
+    records,
     chain: { id: 16602, name: "0G Newton Testnet", explorer: OG_EXPLORER },
   });
 });

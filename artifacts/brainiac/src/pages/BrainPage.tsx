@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { Wand2, Copy, Check, RefreshCw, ChevronDown, FileText, MessageSquare, Mic, Twitter, Users, TrendingUp, Clock, BarChart3, Cpu, Zap, Send, Bot, User } from "lucide-react";
 import { useGenerateDraft } from "@workspace/api-client-react";
-import { useWallets } from "@privy-io/react-auth";
+import { useWallets, usePrivy } from "@privy-io/react-auth";
+import { ExternalLink } from "lucide-react";
 
 const DRAFT_TYPES = [
   { id: "thread",  label: "X Thread",        icon: Twitter,       desc: "Turn feed signals into a Twitter thread" },
@@ -380,7 +381,7 @@ function CommunityIntel() {
   );
 }
 
-type ChatMessage = { role: "user" | "assistant"; content: string };
+type ChatMessage = { role: "user" | "assistant"; content: string; ogRecordId?: string | null; ogStatus?: string | null };
 
 const CHAT_STARTERS = [
   "What's the biggest alpha in my feed right now?",
@@ -392,6 +393,7 @@ const CHAT_STARTERS = [
 
 function BrainChat() {
   const { wallets } = useWallets();
+  const { user } = usePrivy();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -437,11 +439,11 @@ function BrainChat() {
       const res = await fetch("/api/brain/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: next, walletContext, feedContext }),
+        body: JSON.stringify({ messages: next, walletContext, feedContext, userId: user?.id }),
       });
-      const data = (await res.json()) as { reply?: string; error?: string };
+      const data = (await res.json()) as { reply?: string; error?: string; ogRecordId?: string | null; ogStatus?: string | null };
       if (!res.ok || data.error) throw new Error(data.error ?? "Unknown error");
-      setMessages([...next, { role: "assistant", content: data.reply! }]);
+      setMessages([...next, { role: "assistant", content: data.reply!, ogRecordId: data.ogRecordId, ogStatus: data.ogStatus }]);
     } catch {
       setError("Could not reach Brainiac. Try again.");
       setMessages(next.slice(0, -1));
@@ -486,12 +488,28 @@ function BrainChat() {
                 ? <User size={12} className="text-primary" />
                 : <Bot size={12} className="text-muted-foreground" />}
             </div>
-            <div className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
-              m.role === "user"
-                ? "bg-primary text-primary-foreground rounded-tr-sm"
-                : "bg-card border border-border text-foreground rounded-tl-sm"
-            }`}>
-              <pre className="whitespace-pre-wrap font-sans">{m.content}</pre>
+            <div className="max-w-[80%] flex flex-col gap-1">
+              <div className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
+                m.role === "user"
+                  ? "bg-primary text-primary-foreground rounded-tr-sm"
+                  : "bg-card border border-border text-foreground rounded-tl-sm"
+              }`}>
+                <pre className="whitespace-pre-wrap font-sans">{m.content}</pre>
+              </div>
+              {m.role === "assistant" && m.ogRecordId && (
+                <div className="flex items-center gap-1.5 px-1">
+                  <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${
+                    m.ogStatus === "confirmed"
+                      ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                      : m.ogStatus === "no_funds"
+                      ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                      : "bg-primary/10 border-primary/20 text-primary/70"
+                  }`}>
+                    <span className={`w-1 h-1 rounded-full ${m.ogStatus === "confirmed" ? "bg-emerald-400" : "bg-primary/50 animate-pulse"}`} />
+                    0G {m.ogStatus === "confirmed" ? "recorded" : m.ogStatus === "no_funds" ? "no funds" : "recording..."}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -537,6 +555,12 @@ function BrainChat() {
           </button>
         </div>
         <p className="text-muted-foreground/40 text-xs mt-1.5 text-center">Shift + Enter for new line</p>
+        {user?.id && (
+          <p className="text-muted-foreground/30 text-[10px] mt-1 text-center flex items-center justify-center gap-1">
+            <span className="w-1 h-1 rounded-full bg-primary/40 inline-block" />
+            AI responses recorded on 0G Newton Testnet
+          </p>
+        )}
       </div>
     </div>
   );
