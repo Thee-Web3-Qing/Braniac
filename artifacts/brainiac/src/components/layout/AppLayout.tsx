@@ -137,34 +137,55 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   }, [authenticated, ready, user?.id]);
 
 
+  function isInAppBrowser(): boolean {
+    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+    return /CoinbaseBrowser|DappBrowser|MetaMaskMobile|Trust\/|FBAV|FBAN|Instagram|Line\/|Snapchat|GSA\//i.test(ua);
+  }
+
   async function handleLinkGoogle() {
     setLinkConflict(null);
+    if (isInAppBrowser()) {
+      toast({
+        title: "Open in your browser to link Google",
+        description: "In-app browsers block Google sign-in. Copy the URL and open it in Safari or Chrome.",
+        variant: "destructive",
+      });
+      return;
+    }
     setLinkingGoogle(true);
     try {
-      await initOAuth({ provider: "google" });
+      await initOAuth({ provider: "google", redirectUrl: window.location.href });
     } catch (err: unknown) {
       setLinkingGoogle(false);
       const code = (err as { privyErrorCode?: string })?.privyErrorCode;
       if (code === "failed_to_link_account") {
         setLinkConflict("google");
       } else {
-        toast({ title: "Could not link Google", description: "Please try again.", variant: "destructive" });
+        toast({ title: "Could not link Google", description: "Please try again in Safari or Chrome.", variant: "destructive" });
       }
     }
   }
 
   async function handleLinkTwitter() {
     setLinkConflict(null);
+    if (isInAppBrowser()) {
+      toast({
+        title: "Open in your browser to link X",
+        description: "In-app browsers block OAuth sign-in. Copy the URL and open it in Safari or Chrome.",
+        variant: "destructive",
+      });
+      return;
+    }
     setLinkingTwitter(true);
     try {
-      await initOAuth({ provider: "twitter" });
+      await initOAuth({ provider: "twitter", redirectUrl: window.location.href });
     } catch (err: unknown) {
       setLinkingTwitter(false);
       const code = (err as { privyErrorCode?: string })?.privyErrorCode;
       if (code === "failed_to_link_account") {
         setLinkConflict("twitter");
       } else {
-        toast({ title: "Could not link X", description: "Please try again.", variant: "destructive" });
+        toast({ title: "Could not link X", description: "Please try again in Safari or Chrome.", variant: "destructive" });
       }
     }
   }

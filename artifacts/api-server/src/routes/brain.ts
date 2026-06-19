@@ -4,6 +4,67 @@ import { recordAIInteraction } from "../lib/og-chain";
 
 const router = Router();
 
+// Alchemy helpers for wallet history context
+const ALCHEMY_ETH_BASE = "https://eth-mainnet.g.alchemy.com/v2";
+
+async function alchemyPost(apiKey: string, method: string, params: unknown[]): Promise<unknown> {
+  const res = await fetch(`${ALCHEMY_ETH_BASE}/${apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: 1, jsonrpc: "2.0", method, params }),
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!res.ok) return null;
+  const data = await res.json() as { result?: unknown };
+  return data.result ?? null;
+}
+
+function extractEVMAddresses(ctx: string): string[] {
+  return [...new Set(ctx.match(/0x[0-9a-fA-F]{40}/g) ?? [])];
+}
+
+type AlchemyTransfer = {
+  to: string | null;
+  from: string;
+  value: number | null;
+  asset: string | null;
+  category: string;
+  metadata?: { blockTimestamp?: string };
+};
+
+async function fetchWalletHistoryContext(addresses: string[], apiKey: string): Promise<string> {
+  const sections: string[] = [];
+  for (const addr of addresses.slice(0, 2)) {
+    try {
+      const result = await alchemyPost(apiKey, "alchemy_getAssetTransfers", [{
+        fromAddress: addr,
+        category: ["external", "internal", "erc20"],
+        maxCount: "0xF",
+        order: "desc",
+        withMetadata: true,
+      }]) as { transfers?: AlchemyTransfer[] } | null;
+
+      const transfers = result?.transfers ?? [];
+      if (!transfers.length) {
+        sections.push(`${addr.slice(0, 8)}... — no recent outgoing transactions found`);
+        continue;
+      }
+      const lines = transfers.slice(0, 12).map((t) => {
+        const date = t.metadata?.blockTimestamp
+          ? new Date(t.metadata.blockTimestamp).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+          : "unknown date";
+        const val = t.value != null ? `${Number(t.value).toFixed(4)} ${t.asset ?? ""}`.trim() : (t.asset ?? "");
+        const to = t.to ? `${t.to.slice(0, 6)}...${t.to.slice(-4)}` : "contract";
+        return `  • ${date}: ${val} → ${to} [${t.category}]`;
+      });
+      sections.push(`Wallet ${addr.slice(0, 8)}...${addr.slice(-4)} (${transfers.length} recent txs):\n${lines.join("\n")}`);
+    } catch {
+      // silently skip — don't block chat
+    }
+  }
+  return sections.join("\n\n");
+}
+
 const QWEN_BASE_URL = process.env.QWEN_BASE_URL ?? "https://ws-kslei9o3pxdkd1zd.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1";
 const QWEN_WORKSPACE_ID = process.env.QWEN_WORKSPACE_ID ?? "ws-kslei9o3pxdkd1zd";
 
@@ -308,6 +369,19 @@ router.post("/chat", async (req, res) => {
   if (walletContext?.trim()) {
     contextParts.push(`User's connected wallets:\n${walletContext.trim()}`);
   }
+
+  // Fetch real on-chain history from Alchemy for any EVM addresses
+  const alchemyKey = process.env.ALCHEMY_API_KEY;
+  if (alchemyKey && walletContext?.trim()) {
+    const addresses = extractEVMAddresses(walletContext);
+    if (addresses.length > 0) {
+      const txHistory = await fetchWalletHistoryContext(addresses, alchemyKey).catch(() => "");
+      if (txHistory.trim()) {
+        contextParts.push(`User's actual on-chain transaction history (fetched live from Alchemy):\n${txHistory}`);
+      }
+    }
+  }
+
   const contextBlock = contextParts.length
     ? `\n\n---\n${contextParts.join("\n\n")}\n---`
     : "";
@@ -321,6 +395,7 @@ How you talk:
 - Ask a follow-up when it makes the conversation go somewhere useful — but only if it's genuine, not filler.
 - Never use bullet points unless the user specifically asks for a list. Just talk.
 - Keep it tight — 2-4 sentences most of the time. Go longer only if the topic needs it.
+- You DO have access to the user's real wallet transaction history — it's in the context below. Use it when they ask about their on-chain activity. If a wallet shows no transactions, say so plainly.
 - If you don't have enough context to give a real answer, say so plainly and ask what you need.${contextBlock}`;
 
   try {
