@@ -71,7 +71,7 @@ router.post("/generate", async (req, res) => {
   }
 
   const { type, topic, feedContext } = parseResult.data;
-  const apiKey = process.env.QWEN_API_KEY;
+  const apiKey = process.env.QWEN_API_KEYY_BRAINIAC ?? process.env.QWEN_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "QWEN_API_KEY not configured" });
 
   const systemPrompt = `You are Brainiac, an AI writing assistant for Web3 creators and community builders.
@@ -108,7 +108,7 @@ router.post("/briefing", async (req, res) => {
     feedContext?: string;
   };
 
-  const apiKey = process.env.QWEN_API_KEY;
+  const apiKey = process.env.QWEN_API_KEYY_BRAINIAC ?? process.env.QWEN_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "AI service not configured" });
 
   const timeLabel =
@@ -192,7 +192,7 @@ router.post("/wallet-intel", async (req, res) => {
     }>;
   };
 
-  const apiKey = process.env.QWEN_API_KEY;
+  const apiKey = process.env.QWEN_API_KEYY_BRAINIAC ?? process.env.QWEN_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "AI service not configured" });
 
   const activityText = activity?.length
@@ -241,7 +241,7 @@ router.post("/community-intel", async (req, res) => {
     communities?: Array<{ name: string; source: string }>;
   };
 
-  const apiKey = process.env.QWEN_API_KEY;
+  const apiKey = process.env.QWEN_API_KEYY_BRAINIAC ?? process.env.QWEN_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "AI service not configured" });
 
   const communityList = communities?.length
@@ -298,7 +298,7 @@ router.post("/chat", async (req, res) => {
     return res.status(400).json({ error: "messages array required" });
   }
 
-  const apiKey = process.env.QWEN_API_KEY;
+  const apiKey = process.env.QWEN_API_KEYY_BRAINIAC ?? process.env.QWEN_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "AI service not configured — QWEN_API_KEY missing" });
 
   const contextParts: string[] = [];
@@ -356,7 +356,7 @@ router.post("/digest", async (req, res) => {
     return res.status(400).json({ error: "messages array required" });
   }
 
-  const apiKey = process.env.QWEN_API_KEY;
+  const apiKey = process.env.QWEN_API_KEYY_BRAINIAC ?? process.env.QWEN_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "AI service not configured" });
 
   const batch = messages.slice(0, 60);
