@@ -119,13 +119,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     return "unknown";
   }
 
-  // Record login on 0G Newton testnet (fire-and-forget, one per session)
+  // Record login on 0G Newton testnet + sync user to DB (fire-and-forget, one per session)
   useEffect(() => {
     if (!authenticated || !ready || !user?.id) return;
     if (sessionStorage.getItem(SS_KEY) === user.id) return;
     sessionStorage.setItem(SS_KEY, user.id);
 
     const walletAddress = wallets[0]?.address;
+    const walletType = wallets[0]?.chainType ?? undefined;
     const loginMethod = detectLoginMethod();
     const displayName =
       user.google?.name ?? user.twitter?.name ??
@@ -133,6 +134,22 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       (walletAddress ?? undefined);
 
     recordLoginOnOG({ userId: user.id, walletAddress, loginMethod, displayName }).catch(() => {});
+
+    const email = user.email?.address ?? user.google?.email ?? undefined;
+    const discordConnected = !!(localStorage.getItem("brainiac:discord_auth"));
+    const telegramConnected = !!(localStorage.getItem("brainiac:tg_session"));
+    fetch("/api/users/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        privyUserId: user.id,
+        email: email ?? null,
+        walletAddress: walletAddress ?? null,
+        walletType: walletType ?? null,
+        discordConnected,
+        telegramConnected,
+      }),
+    }).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authenticated, ready, user?.id]);
 
