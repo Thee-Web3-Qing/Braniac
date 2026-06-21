@@ -740,7 +740,7 @@ function BrainChat() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-13rem)] max-h-[700px] min-h-[400px]">
+    <div className="flex flex-col h-[calc(100dvh-18rem)] md:h-[calc(100vh-13rem)] max-h-[700px] min-h-[360px]">
       <SectionToggle view={view} onChange={setView} />
       {/* Messages */}
       <div className="flex-1 overflow-y-auto space-y-4 pr-1 pb-2">
@@ -873,17 +873,18 @@ export default function BrainPage() {
       </div>
 
       {/* Top tab switcher */}
-      <div className="flex gap-1 mb-5 md:mb-6 bg-card border border-border rounded-xl p-1 w-full sm:w-auto sm:inline-flex">
+      <div className="flex gap-1 mb-5 md:mb-6 bg-card border border-border rounded-xl p-1 w-full">
         {TOP_TABS.map(({ id, label, icon: Icon }) => (
           <button key={id} data-testid={`button-section-${id}`}
             onClick={() => setActiveTab(id)}
-            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex-1 flex items-center justify-center gap-1.5 md:gap-2 px-2 md:px-4 py-2.5 rounded-lg text-xs md:text-sm font-medium transition-colors ${
               activeTab === id
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
             }`}>
-            <Icon size={14} />
-            {label}
+            <Icon size={13} className="shrink-0" />
+            <span className="hidden sm:inline">{label}</span>
+            <span className="sm:hidden">{id === "chat" ? "Chat" : id === "content" ? "Content" : "Intel"}</span>
           </button>
         ))}
       </div>

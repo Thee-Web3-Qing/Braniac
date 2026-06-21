@@ -489,26 +489,31 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       )}
 
       {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 h-16 bg-sidebar/95 backdrop-blur-md border-t border-border flex items-center justify-around px-2">
-        {navItems.map((item) => {
-          const isActive = location === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-colors ${
-                isActive ? "text-primary" : "text-muted-foreground"
-              }`}
-            >
-              <item.icon className="w-5 h-5" />
-              <span className="text-[10px] font-medium">{item.label}</span>
-            </Link>
-          );
-        })}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-sidebar/98 backdrop-blur-md border-t border-border safe-area-bottom" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+        <div className="h-16 flex items-center justify-around px-1">
+          {navItems.map((item) => {
+            const isActive = location === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="flex flex-col items-center gap-1 min-w-[56px] py-2 px-3 rounded-xl transition-all relative"
+              >
+                {isActive && (
+                  <span className="absolute top-0 inset-x-3 h-0.5 bg-primary rounded-full" />
+                )}
+                <item.icon className={`w-5 h-5 transition-colors ${isActive ? "text-primary" : "text-muted-foreground"}`} />
+                <span className={`text-[10px] font-medium transition-colors ${isActive ? "text-primary" : "text-muted-foreground/60"}`}>
+                  {item.label}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
       </nav>
 
       {/* Main content */}
-      <main className="flex-1 md:ml-56 pt-14 md:pt-0 pb-20 md:pb-0 min-w-0">
+      <main className="flex-1 md:ml-56 pt-14 md:pt-0 pb-24 md:pb-0 min-w-0">
         {children}
       </main>
     </div>

@@ -849,14 +849,19 @@ export default function FeedPage() {
       )}
 
       {connectedSources.length === 0 && !discordAuth && !tgSession && (
-        <div className="mb-5 px-4 py-6 bg-card border border-dashed border-border rounded-xl text-center space-y-3">
-          <p className="text-foreground text-sm font-medium">No sources connected yet</p>
-          <p className="text-muted-foreground text-xs leading-relaxed max-w-xs mx-auto">
-            Connect Discord or Telegram and Brainiac will pull your last 24 hours of signals — no bots, no admin access required.
-          </p>
+        <div className="mb-5 px-5 py-8 bg-card border border-dashed border-border rounded-2xl text-center space-y-3">
+          <div className="w-10 h-10 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto">
+            <MessageSquare size={18} className="text-primary" />
+          </div>
+          <div>
+            <p className="text-foreground text-sm font-medium mb-1">No sources connected yet</p>
+            <p className="text-muted-foreground text-xs leading-relaxed max-w-xs mx-auto">
+              Connect Discord or Telegram and Brainiac pulls your signals — no bots, no admin access required.
+            </p>
+          </div>
           <button onClick={() => setShowModal(true)}
-            className="inline-flex items-center gap-1.5 bg-primary/10 hover:bg-primary/20 border border-primary/25 text-primary text-xs font-medium px-4 py-2 rounded-lg transition-colors">
-            <Plus size={12} /> Connect a source
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium px-5 py-2.5 rounded-xl transition-colors">
+            <Plus size={14} /> Connect a source
           </button>
         </div>
       )}

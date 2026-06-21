@@ -337,8 +337,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-6 md:mb-8">
+      {/* Stats — horizontal scroll on mobile, 4-col grid on desktop */}
+      <div className="flex md:grid md:grid-cols-4 gap-2.5 md:gap-3 mb-6 md:mb-8 -mx-4 px-4 md:mx-0 md:px-0 overflow-x-auto scrollbar-none pb-0.5 md:pb-0">
         {[
           { label: "Signals",     value: feedLoading ? "..." : String(feedItems.length), sub: "from feed",    icon: <Zap size={14} className="text-cyan-400" />,        color: "text-cyan-400" },
           { label: "Communities", value: String(communityCount),                          sub: "connected",   icon: <MessageSquare size={14} className="text-primary" />, color: "text-primary" },
@@ -348,7 +348,7 @@ export default function DashboardPage() {
           <div
             key={s.label}
             data-testid={`card-stat-${s.label.toLowerCase().replace(" ", "-")}`}
-            className="bg-card border border-border rounded-2xl p-3.5 md:p-4"
+            className="shrink-0 w-36 md:w-auto bg-card border border-border rounded-2xl p-3.5 md:p-4"
           >
             <div className="flex items-center gap-1.5 mb-2">
               {s.icon}

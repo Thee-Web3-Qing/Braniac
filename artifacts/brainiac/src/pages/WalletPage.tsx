@@ -542,7 +542,7 @@ export default function WalletPage() {
   const { wallets: privyWallets } = useWallets();
   const privySeeded = useRef(false);
   const [wallets, setWallets]           = useState<Wallet[]>(initialWallets);
-  const [activeWalletId, setActiveWalletId] = useState(initialWallets[0].id);
+  const [activeWalletId, setActiveWalletId] = useState<number | null>(initialWallets[0]?.id ?? null);
   const [innerTab, setInnerTab]         = useState<InnerTab>("overview");
   const [renamingId, setRenamingId]     = useState<number | null>(null);
   const [showModal, setShowModal]       = useState(false);
@@ -563,7 +563,7 @@ export default function WalletPage() {
     setActiveWalletId(seeds[0].id);
   }, [privyWallets]);
 
-  const wallet = wallets.find((w) => w.id === activeWalletId)!;
+  const wallet = wallets.find((w) => w.id === activeWalletId);
 
   const addWallet = (label: string, address: string, chain: string) => {
     const newId = Math.max(...wallets.map((w) => w.id)) + 1;
@@ -618,23 +618,40 @@ export default function WalletPage() {
         {INNER_TABS.map(({ id, label, icon: Icon }) => (
           <button key={id} data-testid={`button-inner-tab-${id}`}
             onClick={() => setInnerTab(id)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-xs font-medium transition-colors ${
               innerTab === id
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
             }`}>
-            <Icon size={12} />
-            <span className="hidden sm:inline">{label}</span>
+            <Icon size={13} />
+            <span>{label === "Intelligence" ? "Intel" : label}</span>
           </button>
         ))}
       </div>
 
-      {innerTab === "overview" && (
+      {!wallet && (
+        <div className="flex flex-col items-center justify-center py-16 px-5 text-center gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-card border border-dashed border-border flex items-center justify-center">
+            <Plus size={20} className="text-muted-foreground/40" />
+          </div>
+          <div>
+            <p className="text-foreground text-sm font-medium mb-1">No wallets tracked yet</p>
+            <p className="text-muted-foreground text-xs leading-relaxed max-w-xs">
+              Add an EVM or Solana wallet address to start monitoring your on-chain activity.
+            </p>
+          </div>
+          <button onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium px-5 py-2.5 rounded-xl transition-colors">
+            <Plus size={14} /> Track a wallet
+          </button>
+        </div>
+      )}
+      {wallet && innerTab === "overview" && (
         <OverviewTab wallet={wallet} renamingId={renamingId}
           onStartRename={() => setRenamingId(wallet.id)} onSaveRename={renameWallet} />
       )}
-      {innerTab === "activity" && <ActivityTab wallet={wallet} />}
-      {innerTab === "intel"    && <IntelTab    wallet={wallet} />}
+      {wallet && innerTab === "activity" && <ActivityTab wallet={wallet} />}
+      {wallet && innerTab === "intel"    && <IntelTab    wallet={wallet} />}
     </div>
   );
 }
