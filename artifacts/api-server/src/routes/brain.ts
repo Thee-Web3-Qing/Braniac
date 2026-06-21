@@ -117,14 +117,6 @@ const TYPE_INSTRUCTIONS: Record<string, string> = {
     "Write an alpha brief (sharp, curated). Use 🔍 for signals, ⚠️ for risks, ✅ for opportunities. Be concise.",
 };
 
-const DEFAULT_FEED_CONTEXT = `
-- Alpha drop: New DEX launching on Base with $200K liquidity incentives
-- Whale wallet moved 500 ETH to Binance (possible sell pressure)
-- LayerZero airdrop snapshot confirmed — deadline end of June
-- Pudgy Penguins floor up 12% with Blur volume spike
-- Community vote: Proposal #14 passed with 78% approval
-`;
-
 router.post("/generate", async (req, res) => {
   const parseResult = GenerateDraftBody.safeParse(req.body);
   if (!parseResult.success) {
@@ -137,14 +129,18 @@ router.post("/generate", async (req, res) => {
 
   const systemPrompt = `You are Brainiac, an AI writing assistant for Web3 creators and community builders.
 Your job is to help users create engaging Web3 content in their voice — confident, informed, no fluff.
-Keep the tone knowledgeable but accessible. No corporate speak. Be direct and punchy.`;
+Keep the tone knowledgeable but accessible. No corporate speak. Be direct and punchy.
+IMPORTANT: Only reference specific market events, prices, or announcements if they appear in the provided feed context. Never invent market data, token prices, NFT floor changes, or airdrop details.`;
+
+  const contextSection = feedContext?.trim()
+    ? `Context from today's Web3 feed:\n${feedContext.trim()}`
+    : `No live feed data is connected yet. Write based on the topic using your general Web3 knowledge. Do not invent specific prices, floor changes, whale moves, or airdrop deadlines — keep the piece timeless and grounded.`;
 
   const userMessage = `${TYPE_INSTRUCTIONS[type] || TYPE_INSTRUCTIONS.thread}
 
 Topic: ${topic}
 
-Context from today's Web3 feed:
-${feedContext || DEFAULT_FEED_CONTEXT}
+${contextSection}
 
 Write the full piece now.`;
 
@@ -185,17 +181,18 @@ router.post("/briefing", async (req, res) => {
     ? communities.map((c) => `- ${c.name} on ${c.source}`).join("\n")
     : "No communities connected yet.";
 
-  const feedSignals = feedContext?.trim() || `
-- New DEX launching on Base tomorrow - $200K liquidity incentives, early LPs get 3x boost
-- Whale wallet 0x7f3a moved 500 ETH to Binance (possible sell pressure signal)
-- LayerZero airdrop snapshot confirmed - requires 5+ cross-chain txs, deadline end of June
-- Pudgy Penguins floor up 12%, 340 ETH traded on Blur in 60 mins
-- Proposal #14 passed in Base Builders DAO with 78% approval - 50K USDC for Q3 grants
-- Arbitrum yield: 18% APY on stablecoin pairs via Camelot V4, audited, launching Thursday
-- New mint: ApeXplorer dropping in 6h, free + 0.01 ETH gas, 5000 supply
-`.trim();
+  const hasRealFeed = !!(feedContext?.trim());
+  const hasCommunities = !!(communities?.length);
+  const feedSignals = feedContext?.trim() ?? "";
 
-  const systemPrompt = `You're catching up a friend on what happened in their Web3 world. Write like you're texting them a quick debrief — not a report. Reference their actual wallets and communities by name when you have them. Be specific about what matters and skip what doesn't. If something needs action, say it plainly. No corporate structure, no filler headers — just tell them what's up like you actually care.`;
+  const systemPrompt = `You're catching up a friend on what happened in their Web3 world. Write like you're texting them a quick debrief — not a report. Reference their actual wallets and communities by name when you have them. Be specific about what matters and skip what doesn't. If something needs action, say it plainly. No corporate structure, no filler headers — just tell them what's up like you actually care.
+CRITICAL: Only mention specific market events, prices, NFT moves, airdrop deadlines, or token activity if they appear in the provided feed signals below. Never invent market data. If no live signals are available, honestly say so and suggest what connecting Discord or Telegram would unlock.`;
+
+  const feedSection = hasRealFeed
+    ? `Recent signals from my communities:\n${feedSignals}`
+    : hasCommunities
+      ? `I have communities connected (${communities!.map((c) => c.name).join(", ")}) but no recent messages were fetched — they may be empty or there was a temporary fetch issue.`
+      : `No communities connected yet — no live feed data available. Honestly let me know what I'm missing by not having Discord or Telegram connected, and what I should set up first.`;
 
   const userMessage = `Catch me up on the ${timeLabel}.
 
@@ -207,8 +204,7 @@ ${communityContext}
 
 My question: "${query?.trim() || "What did I miss?"}"
 
-Recent signals from my communities:
-${feedSignals}
+${feedSection}
 
 Write a personalized briefing. Mention my wallet names where relevant. Flag anything time-sensitive.`;
 

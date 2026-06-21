@@ -360,6 +360,37 @@ export default function DashboardPage() {
         ))}
       </div>
 
+      {/* Setup guide — shown until user has at least one community connected */}
+      {communityCount === 0 && privyWallets.filter((w) => !w.walletClientType?.includes("privy")).length === 0 && (
+        <div className="mb-6 md:mb-8 bg-card border border-border rounded-2xl p-4 md:p-5">
+          <p className="text-foreground font-display font-semibold text-sm mb-4">Get started — 3 steps to your first briefing</p>
+          <div className="space-y-3">
+            {[
+              { step: 1, label: "Connect Discord or Telegram", sub: "Track your communities and get real signals", href: "/feed", done: false },
+              { step: 2, label: "Track a wallet", sub: "Add any EVM or Solana address to monitor on-chain activity", href: "/wallet", done: false },
+              { step: 3, label: "Ask Brainiac", sub: "Get a personalized AI catch-up across all your sources", href: null, done: false },
+            ].map((s) => (
+              <div key={s.step} className="flex items-center gap-3">
+                <div className="w-6 h-6 shrink-0 rounded-full border border-border flex items-center justify-center text-muted-foreground text-xs font-medium">
+                  {s.step}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-foreground text-sm font-medium">{s.label}</p>
+                  <p className="text-muted-foreground text-xs">{s.sub}</p>
+                </div>
+                {s.href && (
+                  <Link href={s.href}>
+                    <button className="shrink-0 flex items-center gap-1 text-primary text-xs font-medium hover:underline">
+                      Go <ArrowRight size={12} />
+                    </button>
+                  </Link>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Briefing / Ask Brainiac */}
       <BriefingCard />
 
