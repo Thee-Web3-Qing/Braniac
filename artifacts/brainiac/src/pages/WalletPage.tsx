@@ -566,7 +566,7 @@ export default function WalletPage() {
   const wallet = wallets.find((w) => w.id === activeWalletId);
 
   const addWallet = (label: string, address: string, chain: string) => {
-    const newId = Math.max(...wallets.map((w) => w.id)) + 1;
+    const newId = (wallets.length > 0 ? Math.max(...wallets.map((w) => w.id)) : 0) + 1;
     setWallets((prev) => [...prev, { id: newId, address, label, chain, pnl: "loading...", positive: true }]);
     setActiveWalletId(newId);
     setInnerTab("overview");

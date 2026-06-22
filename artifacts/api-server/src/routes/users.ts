@@ -1,7 +1,15 @@
-import { Router } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { query } from "../lib/db.js";
 
 const router = Router();
+
+function requireAdminKey(req: Request, res: Response, next: NextFunction) {
+  const secret = process.env.PRIVY_APP_SECRET;
+  if (!secret) return res.status(503).json({ error: "Admin auth not configured" });
+  const provided = req.headers["x-admin-key"];
+  if (provided !== secret) return res.status(401).json({ error: "Unauthorized" });
+  return next();
+}
 
 router.post("/sync", async (req, res) => {
   const {
@@ -50,14 +58,14 @@ router.post("/sync", async (req, res) => {
   }
 });
 
-router.get("/stats", async (_req, res) => {
+router.get("/stats", requireAdminKey, async (_req, res) => {
   try {
-    const total      = await query(`SELECT COUNT(*) AS count FROM users`);
-    const today      = await query(`SELECT COUNT(*) AS count FROM users WHERE first_seen >= NOW() - INTERVAL '24 hours'`);
-    const week       = await query(`SELECT COUNT(*) AS count FROM users WHERE first_seen >= NOW() - INTERVAL '7 days'`);
-    const active     = await query(`SELECT COUNT(*) AS count FROM users WHERE last_seen  >= NOW() - INTERVAL '7 days'`);
-    const withDiscord= await query(`SELECT COUNT(*) AS count FROM users WHERE discord_connected  = TRUE`);
-    const withTg     = await query(`SELECT COUNT(*) AS count FROM users WHERE telegram_connected = TRUE`);
+    const total       = await query(`SELECT COUNT(*) AS count FROM users`);
+    const today       = await query(`SELECT COUNT(*) AS count FROM users WHERE first_seen >= NOW() - INTERVAL '24 hours'`);
+    const week        = await query(`SELECT COUNT(*) AS count FROM users WHERE first_seen >= NOW() - INTERVAL '7 days'`);
+    const active      = await query(`SELECT COUNT(*) AS count FROM users WHERE last_seen  >= NOW() - INTERVAL '7 days'`);
+    const withDiscord = await query(`SELECT COUNT(*) AS count FROM users WHERE discord_connected  = TRUE`);
+    const withTg      = await query(`SELECT COUNT(*) AS count FROM users WHERE telegram_connected = TRUE`);
 
     return res.json({
       total:            Number((total.rows as Array<{ count: string }>)[0]?.count ?? 0),
@@ -73,8 +81,8 @@ router.get("/stats", async (_req, res) => {
   }
 });
 
-router.get("/list", async (req, res) => {
-  const limit = Math.min(Number(req.query.limit ?? 50), 200);
+router.get("/list", requireAdminKey, async (req, res) => {
+  const limit  = Math.min(Number(req.query.limit  ?? 50), 200);
   const offset = Number(req.query.offset ?? 0);
   try {
     const result = await query(
