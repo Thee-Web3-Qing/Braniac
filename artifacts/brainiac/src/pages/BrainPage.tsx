@@ -865,7 +865,7 @@ export default function BrainPage() {
   const [activeTab, setActiveTab] = useState<TopTab>("chat");
 
   return (
-    <div className="p-4 md:p-6 max-w-4xl mx-auto animate-fade-in">
+    <div className="p-4 md:p-6 animate-fade-in">
       {/* Header */}
       <div className="mb-5 md:mb-6">
         <h1 className="font-display font-bold text-foreground text-xl md:text-2xl">Create</h1>

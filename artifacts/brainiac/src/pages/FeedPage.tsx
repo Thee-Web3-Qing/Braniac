@@ -737,7 +737,7 @@ export default function FeedPage() {
   });
 
   return (
-    <div className="p-4 md:p-6 max-w-4xl mx-auto animate-fade-in">
+    <div className="p-4 md:p-6 animate-fade-in">
       {showModal && (
         <ConnectModal
           onClose={() => setShowModal(false)}
